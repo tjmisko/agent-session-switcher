@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# agent-waybar-module — Waybar custom module output (JSON with pango markup)
+
+set -euo pipefail
+
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
+
+source "$LIB_DIR/state.sh"
+
+state_init
+
+now="$(date +%s)"
+active="$(state_get_active)"
+has_working=false
+entries=()
+
+for session in $(state_list_sessions); do
+    state="$(state_read_session "$session" "state" 2>/dev/null || echo "idle")"
+    idle_since="$(state_read_session "$session" "idle_since" 2>/dev/null || echo "")"
+
+    # Calculate duration
+    if [[ "$state" == "working" ]]; then
+        has_working=true
+        color="#f0a050"  # orange
+        duration_label=""
+    elif [[ -n "$idle_since" ]]; then
+        elapsed=$(( now - idle_since ))
+        if (( elapsed > 600 )); then
+            color="#e06060"  # red (stale >10min)
+        else
+            color="#60c060"  # green
+        fi
+
+        hours=$(( elapsed / 3600 ))
+        mins=$(( (elapsed % 3600) / 60 ))
+        secs=$(( elapsed % 60 ))
+        duration_label="$(printf " %02d:%02d:%02d" "$hours" "$mins" "$secs")"
+    else
+        color="#60c060"  # green
+        duration_label=""
+    fi
+
+    # Format entry
+    display_name="$session"
+    if [[ "$session" == "$active" ]]; then
+        entry="<span color='${color}' weight='bold'>${display_name}: ${state}${duration_label}</span>"
+    else
+        entry="<span color='${color}'>${display_name}: ${state}${duration_label}</span>"
+    fi
+    entries+=("$entry")
+done
+
+if [[ ${#entries[@]} -eq 0 ]]; then
+    echo '{"text": "", "class": "empty"}'
+    exit 0
+fi
+
+text="$(IFS='  '; echo "${entries[*]}")"
+
+if $has_working; then
+    class="has-working"
+else
+    class="all-idle"
+fi
+
+# Output JSON for waybar
+printf '{"text": "%s", "class": "%s"}\n' "$text" "$class"

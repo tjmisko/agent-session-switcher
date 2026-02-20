@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# agent-session-queue — Priority queue view of sessions
+
+set -euo pipefail
+
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
+
+source "$LIB_DIR/state.sh"
+source "$LIB_DIR/manifest.sh"
+
+state_init
+
+_format_duration() {
+    local seconds="$1"
+    local hours=$(( seconds / 3600 ))
+    local mins=$(( (seconds % 3600) / 60 ))
+    printf "%02d:%02d" "$hours" "$mins"
+}
+
+_read_summary() {
+    local session="$1"
+    local summary_file="$SESSIONS_DIR/$session/summary"
+
+    if [[ -f "$summary_file" ]]; then
+        local priority summary
+        priority="$(grep '^PRIORITY:' "$summary_file" 2>/dev/null | awk '{print $2}' || echo "3")"
+        summary="$(grep '^SUMMARY:' "$summary_file" 2>/dev/null | cut -d: -f2- | xargs || echo "")"
+        echo "${priority:-3}|${summary:-no summary}"
+    else
+        echo "3|no summary"
+    fi
+}
+
+now="$(date +%s)"
+
+# Build entries with sort keys
+entries=()
+for session in $(state_list_sessions); do
+    state="$(state_read_session "$session" "state" 2>/dev/null || echo "idle")"
+    agent="$(state_read_session "$session" "agent" 2>/dev/null || echo "?")"
+    idle_since="$(state_read_session "$session" "idle_since" 2>/dev/null || echo "$now")"
+    cwd="$(manifest_get "$session" "cwd" 2>/dev/null || echo "~")"
+    cwd="${cwd/#$HOME/\~}"
+
+    summary_data="$(_read_summary "$session")"
+    priority="${summary_data%%|*}"
+    summary="${summary_data#*|}"
+
+    # Duration
+    if [[ "$state" == "working" ]]; then
+        duration="working"
+        idle_elapsed=0
+    else
+        idle_elapsed=$(( now - idle_since ))
+        duration="$(_format_duration "$idle_elapsed")"
+    fi
+
+    # Sort key: state (working=0, idle=1), priority (inverted), idle_elapsed
+    state_sort=$( [[ "$state" == "working" ]] && echo "0" || echo "1" )
+    priority_sort=$(( 10 - priority ))
+
+    # Color
+    if [[ "$state" == "working" ]]; then
+        color_code="33"
+    elif (( idle_elapsed > 600 )); then
+        color_code="31"
+    else
+        color_code="32"
+    fi
+
+    printf -v entry "%s|%s|%06d|\033[%sm P%s  %-20s %-8s %-8s %-8s %-40s %s\033[0m" \
+        "$state_sort" "$priority_sort" "$idle_elapsed" \
+        "$color_code" "$priority" "$session" "$agent" "$state" "$duration" "$summary" "$cwd"
+    entries+=("$entry")
+done
+
+# Sort and display
+selection="$(printf '%s\n' "${entries[@]}" | sort -t'|' -k1,1 -k2,2 -k3,3n | cut -d'|' -f4- | fzf \
+    --ansi \
+    --no-sort \
+    --header="Priority Queue — select to jump" \
+    --prompt="queue> " \
+)"
+
+if [[ -n "$selection" ]]; then
+    # Extract session name
+    session_name="$(echo "$selection" | awk '{print $2}')"
+    state_set_active "$session_name"
+
+    workspace="$(state_read_session "$session_name" "workspace" 2>/dev/null || echo "")"
+    if [[ -n "$workspace" ]]; then
+        hyprctl dispatch workspace "$workspace" 2>/dev/null || true
+    fi
+
+    "$SCRIPT_DIR/agent-mode-toggle" refresh
+fi

@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# agent-session-picker — FZF session picker
+
+set -euo pipefail
+
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
+
+source "$LIB_DIR/state.sh"
+source "$LIB_DIR/manifest.sh"
+
+state_init
+
+_format_duration() {
+    local seconds="$1"
+    local hours=$(( seconds / 3600 ))
+    local mins=$(( (seconds % 3600) / 60 ))
+    local secs=$(( seconds % 60 ))
+    printf "%02d:%02d:%02d" "$hours" "$mins" "$secs"
+}
+
+_build_session_list() {
+    local now active
+    now="$(date +%s)"
+    active="$(state_get_active)"
+
+    for session in $(state_list_sessions); do
+        local state idle_since cwd duration_str indicator color_code
+
+        state="$(state_read_session "$session" "state" 2>/dev/null || echo "idle")"
+        idle_since="$(state_read_session "$session" "idle_since" 2>/dev/null || echo "")"
+        cwd="$(manifest_get "$session" "cwd" 2>/dev/null || echo "~")"
+        cwd="${cwd/#$HOME/\~}"
+
+        # Duration
+        if [[ "$state" == "working" ]]; then
+            duration_str="working"
+            color_code="33"  # yellow/orange
+        elif [[ -n "$idle_since" ]]; then
+            local elapsed=$(( now - idle_since ))
+            duration_str="$(_format_duration "$elapsed")"
+            if (( elapsed > 600 )); then
+                color_code="31"  # red
+            else
+                color_code="32"  # green
+            fi
+        else
+            duration_str="idle"
+            color_code="32"  # green
+        fi
+
+        # Active indicator
+        if [[ "$session" == "$active" ]]; then
+            indicator="▸"
+        else
+            indicator=" "
+        fi
+
+        printf "%s \033[%sm%-20s %-8s %-8s\033[0m %s\n" \
+            "$indicator" "$color_code" "$session" "$state" "$duration_str" "$cwd"
+    done
+}
+
+_pick_session() {
+    local selection
+    selection="$(_build_session_list | fzf \
+        --ansi \
+        --no-sort \
+        --prompt="agent> " \
+        --header="enter:attach  ctrl-n:new  ctrl-x:kill  ctrl-r:rename" \
+        --bind="ctrl-n:execute($SCRIPT_DIR/agent-session-create)+reload($0 --list)" \
+        --bind="ctrl-x:execute-silent(tmux kill-session -t {2} 2>/dev/null; $SCRIPT_DIR/_agent-session-cleanup {2})+reload($0 --list)" \
+        --bind="ctrl-r:execute-silent(tmux rename-session -t {2} {q} 2>/dev/null)+reload($0 --list)" \
+        --preview="tmux capture-pane -t {2} -p 2>/dev/null | tail -20" \
+        --preview-window=right:40% \
+    )"
+
+    if [[ -n "$selection" ]]; then
+        # Extract session name (second field)
+        local session_name
+        session_name="$(echo "$selection" | awk '{print $2}')"
+        echo "$session_name"
+    fi
+}
+
+# Handle --list flag for fzf reload
+if [[ "${1:-}" == "--list" ]]; then
+    _build_session_list
+    exit 0
+fi
+
+# Check if any sessions exist
+if [[ -z "$(state_list_sessions)" ]]; then
+    # No sessions — create one
+    new_session="$("$SCRIPT_DIR/agent-session-create")"
+    "$SCRIPT_DIR/agent-session-overlay" "$new_session"
+    exit 0
+fi
+
+selected="$(_pick_session)"
+
+if [[ -n "$selected" ]]; then
+    "$SCRIPT_DIR/agent-session-overlay" "$selected"
+fi

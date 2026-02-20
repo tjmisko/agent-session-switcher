@@ -1,0 +1,39 @@
+defaults:
+  agent: claude
+  terminal: wezterm
+  editor: nvim
+  window_manager: hyprland
+
+agents:
+  claude:
+    command: claude
+    resume_flag: "--resume"
+    session_id_flag: "--session-id"
+    system_prompt_flag: "--append-system-prompt"
+    session_prefix: "claude-"
+    hooks: true
+  aider:
+    command: aider
+    session_prefix: "aider-"
+    hooks: false
+  cursor:
+    command: cursor
+    session_prefix: "cursor-"
+    hooks: false
+
+system_prompt_additions: |
+  After each response, write a one-line status summary and priority to
+  the file at $AGENT_STATE_DIR/summary. Format:
+  PRIORITY: <1-5>
+  SUMMARY: <one sentence describing current state and next action needed>
+  Priority guidelines:
+  - 5 (critical): ~/Projects work that is blocked or failing tests
+  - 4 (high): active ~/Projects feature work
+  - 3 (normal): routine changes, refactoring
+  - 2 (low): configuration changes, dotfiles
+  - 1 (minimal): documentation, cosmetic changes
+
+priority_rules: |
+  Projects under ~/Projects/ are highest priority.
+  Configuration and dotfile changes are low priority.
+  Failing tests or blocked work is always critical.

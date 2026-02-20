@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# agent-session-overlay — Opens session fullscreen in overlay terminal
+
+set -euo pipefail
+
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
+
+source "$LIB_DIR/config.sh"
+source "$LIB_DIR/state.sh"
+
+state_init
+
+session_name="${1:-$(state_get_active)}"
+
+if [[ -z "$session_name" ]]; then
+    echo "No session specified and no active session" >&2
+    exit 1
+fi
+
+if ! tmux has-session -t "$session_name" 2>/dev/null; then
+    echo "Session '$session_name' does not exist" >&2
+    exit 1
+fi
+
+# Update active session
+state_set_active "$session_name"
+
+# Get workspace and store it
+workspace="$(state_read_session "$session_name" "workspace" 2>/dev/null || echo "")"
+if [[ -z "$workspace" ]]; then
+    # Get current workspace and assign it
+    workspace="$(hyprctl activeworkspace -j 2>/dev/null | jq -r '.id' 2>/dev/null || echo "1")"
+    state_write_session "$session_name" "workspace" "$workspace"
+fi
+
+# Ensure AI mode is active
+"$SCRIPT_DIR/agent-mode-toggle" enter
+
+# Spawn overlay terminal — hyprland window rules handle fullscreen
+terminal="$(config_get_default "defaults.terminal" "wezterm")"
+
+case "$terminal" in
+    wezterm)
+        wezterm start --class agent-session-overlay -- tmux attach-session -t "$session_name"
+        ;;
+    alacritty)
+        alacritty --class agent-session-overlay -e tmux attach-session -t "$session_name"
+        ;;
+    kitty)
+        kitty --class agent-session-overlay tmux attach-session -t "$session_name"
+        ;;
+    *)
+        echo "Unsupported terminal: $terminal" >&2
+        exit 1
+        ;;
+esac
+
+# On close: check if any sessions remain
+"$SCRIPT_DIR/agent-mode-toggle" refresh
+
+remaining="$(state_list_sessions | wc -l)"
+if [[ "$remaining" -eq 0 ]]; then
+    "$SCRIPT_DIR/agent-mode-toggle" exit
+fi

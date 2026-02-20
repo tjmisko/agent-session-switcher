@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# agent-session-create — Create a new agent session
+
+set -euo pipefail
+
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
+
+source "$LIB_DIR/config.sh"
+source "$LIB_DIR/state.sh"
+source "$LIB_DIR/manifest.sh"
+
+state_init
+manifest_init
+
+# Parse args
+agent="${1:-$(config_get_default "defaults.agent" "claude")}"
+cwd="${2:-$(pwd)}"
+name="${3:-}"
+
+# Read agent config
+command="$(config_get_agent "$agent" "command")"
+prefix="$(config_get_agent "$agent" "session_prefix")"
+session_id_flag="$(config_get_agent "$agent" "session_id_flag")"
+system_prompt_flag="$(config_get_agent "$agent" "system_prompt_flag")"
+has_hooks="$(config_get_agent "$agent" "hooks")"
+
+# Generate session name if not provided
+if [[ -z "$name" ]]; then
+    # Find next available number
+    n=1
+    while tmux has-session -t "${prefix}${n}" 2>/dev/null; do
+        (( n++ ))
+    done
+    name="${prefix}${n}"
+fi
+
+# Generate UUID
+uuid="$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)"
+
+# Build agent state dir
+agent_state_dir="$SESSIONS_DIR/$name"
+
+# Build command args
+cmd_args=("$command")
+
+if [[ -n "$session_id_flag" ]]; then
+    cmd_args+=($session_id_flag "$uuid")
+fi
+
+# Build system prompt additions
+if [[ -n "$system_prompt_flag" ]]; then
+    prompt_additions="$(config_get "system_prompt_additions")"
+    priority_rules="$(config_get "priority_rules")"
+
+    if [[ -n "$prompt_additions" || -n "$priority_rules" ]]; then
+        full_prompt="AGENT_STATE_DIR=${agent_state_dir}
+${prompt_additions}
+${priority_rules}"
+        cmd_args+=($system_prompt_flag "$full_prompt")
+    fi
+fi
+
+# Create tmux session
+tmux new-session -d -s "$name" -c "$cwd" "${cmd_args[@]}"
+
+# Set tmux environment variables
+tmux set-environment -t "$name" AGENT_STATE_DIR "$agent_state_dir"
+tmux set-environment -t "$name" CLAUDE_CWD "$cwd"
+
+# Write manifest
+manifest_add "$name" "$agent" "$uuid" "$cwd"
+
+# Write state file
+state_write_session "$name" "state" "idle"
+state_write_session "$name" "agent" "$agent"
+state_write_session "$name" "idle_since" "$(date +%s)"
+
+# Set as active
+state_set_active "$name"
+
+echo "$name"

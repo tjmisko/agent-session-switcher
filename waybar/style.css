@@ -1,0 +1,27 @@
+* {
+    font-family: "JetBrains Mono", "Symbols Nerd Font", monospace;
+    font-size: 13px;
+    min-height: 0;
+}
+
+window#waybar {
+    background-color: rgba(20, 20, 30, 0.85);
+    border-top: 1px solid rgba(100, 100, 140, 0.3);
+    color: #c0c0d0;
+}
+
+#custom-ai-sessions {
+    padding: 0 16px;
+}
+
+#custom-ai-sessions.has-working {
+    background-color: rgba(240, 160, 80, 0.1);
+}
+
+#custom-ai-sessions.all-idle {
+    background-color: rgba(96, 192, 96, 0.05);
+}
+
+#custom-ai-sessions.empty {
+    background-color: transparent;
+}

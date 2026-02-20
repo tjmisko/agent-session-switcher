@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# _agent-session-cleanup — Internal: clean up state after session kill
+
+set -euo pipefail
+
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
+
+source "$LIB_DIR/state.sh"
+source "$LIB_DIR/manifest.sh"
+
+session_name="${1:-}"
+
+if [[ -z "$session_name" ]]; then
+    exit 0
+fi
+
+state_remove_session "$session_name"
+manifest_remove "$session_name"
+
+# If this was the active session, clear it
+active="$(state_get_active)"
+if [[ "$active" == "$session_name" ]]; then
+    # Set active to first remaining session, if any
+    first="$(state_list_sessions | head -1)"
+    if [[ -n "$first" ]]; then
+        state_set_active "$first"
+    else
+        rm -f "$STATE_DIR/active-session"
+    fi
+fi
+
+"$SCRIPT_DIR/agent-mode-toggle" refresh

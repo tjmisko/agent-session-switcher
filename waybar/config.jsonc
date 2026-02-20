@@ -1,0 +1,21 @@
+{
+    "layer": "top",
+    "position": "bottom",
+    "height": 30,
+    "exclusive": true,
+    "passthrough": false,
+    "gtk-layer-shell": true,
+
+    "modules-left": [],
+    "modules-center": ["custom/ai-sessions"],
+    "modules-right": [],
+
+    "custom/ai-sessions": {
+        "exec": "agent-waybar-module",
+        "return-type": "json",
+        "interval": 30,
+        "signal": 10,
+        "format": "{}",
+        "tooltip": false
+    }
+}
