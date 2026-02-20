@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# _agent-session-cleanup — Internal: clean up state after session kill
+# _agent-session-cleanup — Internal: mark session dead after tmux exit
+# Called by tmux session-closed hook. Must be idempotent.
+# Does NOT delete the state dir — preserves it for resume.
 
 set -euo pipefail
 
@@ -7,21 +9,32 @@ SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
 
 source "$LIB_DIR/state.sh"
-source "$LIB_DIR/manifest.sh"
 
-session_name="${1:-}"
+uuid="${1:-}"
 
-if [[ -z "$session_name" ]]; then
+if [[ -z "$uuid" ]]; then
     exit 0
 fi
 
-state_remove_session "$session_name"
-manifest_remove "$session_name"
+# Mark as dead (preserves dir for resume)
+state_write_session "$uuid" "state" "dead"
+state_write_session "$uuid" "dead_since" "$(date +%s)"
+
+# Save CWD before session disappears (for resume)
+# Note: session may already be gone by the time this runs,
+# so we only write if we can read it
+session_name="$(state_get_name "$uuid")"
+if [[ -n "$session_name" ]]; then
+    cwd="$(state_get_cwd "$session_name" 2>/dev/null || echo "")"
+    if [[ -n "$cwd" ]]; then
+        state_write_session "$uuid" "cwd" "$cwd"
+    fi
+fi
 
 # If this was the active session, clear it
 active="$(state_get_active)"
-if [[ "$active" == "$session_name" ]]; then
-    # Set active to first remaining session, if any
+if [[ "$active" == "$uuid" ]]; then
+    # Set active to first remaining live session, if any
     first="$(state_list_sessions | head -1)"
     if [[ -n "$first" ]]; then
         state_set_active "$first"
@@ -30,4 +43,11 @@ if [[ "$active" == "$session_name" ]]; then
     fi
 fi
 
-"$SCRIPT_DIR/agent-mode-toggle" refresh
+# Refresh waybar
+"$SCRIPT_DIR/agent-mode-toggle" refresh 2>/dev/null || true
+
+# If no live sessions remain, exit AI mode
+remaining="$(state_list_sessions | wc -l)"
+if [[ "$remaining" -eq 0 ]]; then
+    "$SCRIPT_DIR/agent-mode-toggle" exit 2>/dev/null || true
+fi

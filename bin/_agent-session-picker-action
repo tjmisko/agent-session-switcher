@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# _agent-session-picker-action — Helper for fzf picker actions
+# Usage: _agent-session-picker-action kill <uuid>
+
+set -euo pipefail
+
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
+
+source "$LIB_DIR/state.sh"
+
+action="${1:-}"
+uuid="${2:-}"
+
+[[ -n "$action" && -n "$uuid" ]] || exit 0
+
+case "$action" in
+    kill)
+        state="$(state_read_session "$uuid" "state" 2>/dev/null || echo "")"
+        if [[ "$state" == "dead" ]]; then
+            # Dismiss: delete state dir entirely
+            state_remove_session "$uuid"
+        else
+            # Live: kill tmux session (cleanup hook will mark dead)
+            session_name="$(state_get_name "$uuid")"
+            if [[ -n "$session_name" ]]; then
+                tmux kill-session -t "$session_name" 2>/dev/null || true
+            fi
+        fi
+        ;;
+esac

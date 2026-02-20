@@ -11,7 +11,16 @@ source "$LIB_DIR/state.sh"
 
 state_init
 
-session_name="${1:-$(state_get_active)}"
+# Accept either a session name (for direct use) or resolve from active UUID
+session_name="${1:-}"
+
+if [[ -z "$session_name" ]]; then
+    # Try active UUID
+    active_uuid="$(state_get_active)"
+    if [[ -n "$active_uuid" ]]; then
+        session_name="$(state_get_name "$active_uuid")"
+    fi
+fi
 
 if [[ -z "$session_name" ]]; then
     echo "No session specified and no active session" >&2
@@ -23,15 +32,19 @@ if ! tmux has-session -t "$session_name" 2>/dev/null; then
     exit 1
 fi
 
-# Update active session
-state_set_active "$session_name"
+# Look up UUID for state operations
+uuid="$(state_find_uuid "$session_name")"
 
-# Get workspace and store it
-workspace="$(state_read_session "$session_name" "workspace" 2>/dev/null || echo "")"
-if [[ -z "$workspace" ]]; then
-    # Get current workspace and assign it
-    workspace="$(hyprctl activeworkspace -j 2>/dev/null | jq -r '.id' 2>/dev/null || echo "1")"
-    state_write_session "$session_name" "workspace" "$workspace"
+# Update active session (by UUID if available, fall back to name lookup)
+if [[ -n "$uuid" ]]; then
+    state_set_active "$uuid"
+
+    # Get workspace and store it
+    workspace="$(state_read_session "$uuid" "workspace" 2>/dev/null || echo "")"
+    if [[ -z "$workspace" ]]; then
+        workspace="$(hyprctl activeworkspace -j 2>/dev/null | jq -r '.id' 2>/dev/null || echo "1")"
+        state_write_session "$uuid" "workspace" "$workspace"
+    fi
 fi
 
 # Ensure AI mode is active
@@ -55,11 +68,3 @@ case "$terminal" in
         exit 1
         ;;
 esac
-
-# On close: check if any sessions remain
-"$SCRIPT_DIR/agent-mode-toggle" refresh
-
-remaining="$(state_list_sessions | wc -l)"
-if [[ "$remaining" -eq 0 ]]; then
-    "$SCRIPT_DIR/agent-mode-toggle" exit
-fi

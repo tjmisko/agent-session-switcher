@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# agent-session-cycle — Cycle through sessions and jump to workspace
+# agent-session-cycle — Cycle through sessions and jump to workspace (UUID-keyed)
 
 set -euo pipefail
 
@@ -12,10 +12,10 @@ state_init
 
 direction="${1:-up}"
 
-# Get sorted session list
-mapfile -t sessions < <(state_list_sessions | sort)
+# Get sorted session UUIDs
+mapfile -t uuids < <(state_list_sessions | sort)
 
-if [[ ${#sessions[@]} -eq 0 ]]; then
+if [[ ${#uuids[@]} -eq 0 ]]; then
     exit 0
 fi
 
@@ -23,15 +23,15 @@ active="$(state_get_active)"
 
 # Find current index
 current_idx=-1
-for i in "${!sessions[@]}"; do
-    if [[ "${sessions[$i]}" == "$active" ]]; then
+for i in "${!uuids[@]}"; do
+    if [[ "${uuids[$i]}" == "$active" ]]; then
         current_idx=$i
         break
     fi
 done
 
 # Calculate next index
-count=${#sessions[@]}
+count=${#uuids[@]}
 if [[ "$direction" == "up" || "$direction" == "next" ]]; then
     next_idx=$(( (current_idx + 1) % count ))
 elif [[ "$direction" == "down" || "$direction" == "prev" ]]; then
@@ -41,11 +41,11 @@ else
     exit 1
 fi
 
-next_session="${sessions[$next_idx]}"
-state_set_active "$next_session"
+next_uuid="${uuids[$next_idx]}"
+state_set_active "$next_uuid"
 
 # Jump to workspace
-workspace="$(state_read_session "$next_session" "workspace" 2>/dev/null || echo "")"
+workspace="$(state_read_session "$next_uuid" "workspace" 2>/dev/null || echo "")"
 if [[ -n "$workspace" ]]; then
     hyprctl dispatch workspace "$workspace" 2>/dev/null || true
 fi

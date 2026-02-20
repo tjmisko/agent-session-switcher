@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# agent-session-create — Create a new agent session
+# agent-session-create — Create a new agent session (UUID-keyed)
 
 set -euo pipefail
 
@@ -8,29 +8,51 @@ LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
 
 source "$LIB_DIR/config.sh"
 source "$LIB_DIR/state.sh"
-source "$LIB_DIR/manifest.sh"
 
 state_init
-manifest_init
 
 # Parse args
-agent="${1:-$(config_get_default "defaults.agent" "claude")}"
-cwd="${2:-$(pwd)}"
-name="${3:-}"
+resume_uuid=""
+agent=""
+cwd=""
+name=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --resume)
+            resume_uuid="$2"
+            shift 2
+            ;;
+        *)
+            # Positional args: agent, cwd, name
+            if [[ -z "$agent" ]]; then
+                agent="$1"
+            elif [[ -z "$cwd" ]]; then
+                cwd="$1"
+            else
+                name="$1"
+            fi
+            shift
+            ;;
+    esac
+done
+
+agent="${agent:-$(config_get_default "defaults.agent" "claude")}"
+cwd="${cwd:-$(pwd)}"
 
 # Read agent config
 command="$(config_get_agent "$agent" "command")"
 prefix="$(config_get_agent "$agent" "session_prefix")"
 session_id_flag="$(config_get_agent "$agent" "session_id_flag")"
 system_prompt_flag="$(config_get_agent "$agent" "system_prompt_flag")"
+resume_flag="$(config_get_agent "$agent" "resume_flag")"
 has_hooks="$(config_get_agent "$agent" "hooks")"
 
 # Generate session name if not provided
 if [[ -z "$name" ]]; then
-    # Find next available number
     n=1
     while tmux has-session -t "${prefix}${n}" 2>/dev/null; do
-        (( n++ ))
+        (( ++n ))
     done
     name="${prefix}${n}"
 fi
@@ -39,12 +61,39 @@ fi
 uuid="$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)"
 
 # Build agent state dir
-agent_state_dir="$SESSIONS_DIR/$name"
+agent_state_dir="$SESSIONS_DIR/$uuid"
+mkdir -p "$agent_state_dir"
 
 # Build command args
 cmd_args=("$command")
 
-if [[ -n "$session_id_flag" ]]; then
+# Handle resume mode
+if [[ -n "$resume_uuid" ]]; then
+    resume_id="$(state_read_session "$resume_uuid" "resume_id" 2>/dev/null || echo "")"
+    if [[ -n "$resume_id" && -n "$resume_flag" ]]; then
+        cmd_args+=($resume_flag "$resume_id")
+    fi
+
+    # Inherit fields from old session
+    old_agent="$(state_read_session "$resume_uuid" "agent" 2>/dev/null || echo "$agent")"
+    old_workspace="$(state_read_session "$resume_uuid" "workspace" 2>/dev/null || echo "")"
+    old_cwd="$(state_read_session "$resume_uuid" "cwd" 2>/dev/null || echo "")"
+    agent="$old_agent"
+    [[ -z "$old_cwd" ]] || cwd="$old_cwd"
+
+    # Copy summary if it exists
+    if [[ -f "$SESSIONS_DIR/$resume_uuid/summary" ]]; then
+        cp "$SESSIONS_DIR/$resume_uuid/summary" "$agent_state_dir/summary"
+    fi
+
+    # Remove old state dir
+    state_remove_session "$resume_uuid"
+
+    # Write inherited fields
+    if [[ -n "$old_workspace" ]]; then
+        state_write_session "$uuid" "workspace" "$old_workspace"
+    fi
+elif [[ -n "$session_id_flag" ]]; then
     cmd_args+=($session_id_flag "$uuid")
 fi
 
@@ -61,22 +110,31 @@ ${priority_rules}"
     fi
 fi
 
+# Write launcher script to avoid tmux shell-command quoting issues
+# (tmux joins args with spaces and passes to sh -c, breaking multiline values)
+launcher="$agent_state_dir/launch.sh"
+printf '#!/usr/bin/env bash\nexec %s\n' "${cmd_args[*]@Q}" > "$launcher"
+chmod +x "$launcher"
+
 # Create tmux session
-tmux new-session -d -s "$name" -c "$cwd" "${cmd_args[@]}"
+tmux new-session -d -s "$name" -c "$cwd" "$launcher"
+
+# Set session-closed hook immediately so cleanup fires even if later lines fail
+tmux set-hook -t "$name" session-closed \
+    "run-shell '$SCRIPT_DIR/_agent-session-cleanup $uuid'"
+
+# Set UUID as tmux session option
+tmux set-option -t "$name" @agent_uuid "$uuid"
 
 # Set tmux environment variables
 tmux set-environment -t "$name" AGENT_STATE_DIR "$agent_state_dir"
-tmux set-environment -t "$name" CLAUDE_CWD "$cwd"
-
-# Write manifest
-manifest_add "$name" "$agent" "$uuid" "$cwd"
 
 # Write state file
-state_write_session "$name" "state" "idle"
-state_write_session "$name" "agent" "$agent"
-state_write_session "$name" "idle_since" "$(date +%s)"
+state_write_session "$uuid" "state" "idle"
+state_write_session "$uuid" "agent" "$agent"
+state_write_session "$uuid" "idle_since" "$(date +%s)"
 
 # Set as active
-state_set_active "$name"
+state_set_active "$uuid"
 
 echo "$name"

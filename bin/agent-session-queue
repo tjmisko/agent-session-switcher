@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# agent-session-queue — Priority queue view of sessions
+# agent-session-queue — Priority queue view of sessions (UUID-keyed)
 
 set -euo pipefail
 
@@ -7,7 +7,6 @@ SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
 
 source "$LIB_DIR/state.sh"
-source "$LIB_DIR/manifest.sh"
 
 state_init
 
@@ -19,8 +18,8 @@ _format_duration() {
 }
 
 _read_summary() {
-    local session="$1"
-    local summary_file="$SESSIONS_DIR/$session/summary"
+    local uuid="$1"
+    local summary_file="$SESSIONS_DIR/$uuid/summary"
 
     if [[ -f "$summary_file" ]]; then
         local priority summary
@@ -36,14 +35,17 @@ now="$(date +%s)"
 
 # Build entries with sort keys
 entries=()
-for session in $(state_list_sessions); do
-    state="$(state_read_session "$session" "state" 2>/dev/null || echo "idle")"
-    agent="$(state_read_session "$session" "agent" 2>/dev/null || echo "?")"
-    idle_since="$(state_read_session "$session" "idle_since" 2>/dev/null || echo "$now")"
-    cwd="$(manifest_get "$session" "cwd" 2>/dev/null || echo "~")"
+for uuid in $(state_list_sessions); do
+    name="$(state_get_name "$uuid")"
+    [[ -n "$name" ]] || continue
+
+    state="$(state_read_session "$uuid" "state" 2>/dev/null || echo "idle")"
+    agent="$(state_read_session "$uuid" "agent" 2>/dev/null || echo "?")"
+    idle_since="$(state_read_session "$uuid" "idle_since" 2>/dev/null || echo "$now")"
+    cwd="$(state_get_cwd "$name")"
     cwd="${cwd/#$HOME/\~}"
 
-    summary_data="$(_read_summary "$session")"
+    summary_data="$(_read_summary "$uuid")"
     priority="${summary_data%%|*}"
     summary="${summary_data#*|}"
 
@@ -69,26 +71,37 @@ for session in $(state_list_sessions); do
         color_code="32"
     fi
 
-    printf -v entry "%s|%s|%06d|\033[%sm P%s  %-20s %-8s %-8s %-8s %-40s %s\033[0m" \
+    printf -v entry "%s|%s|%06d|\033[%sm P%s  %-20s %-8s %-8s %-8s %-40s %s\033[0m|%s" \
         "$state_sort" "$priority_sort" "$idle_elapsed" \
-        "$color_code" "$priority" "$session" "$agent" "$state" "$duration" "$summary" "$cwd"
+        "$color_code" "$priority" "$name" "$agent" "$state" "$duration" "$summary" "$cwd" \
+        "$uuid"
     entries+=("$entry")
 done
 
-# Sort and display
-selection="$(printf '%s\n' "${entries[@]}" | sort -t'|' -k1,1 -k2,2 -k3,3n | cut -d'|' -f4- | fzf \
+if [[ ${#entries[@]} -eq 0 ]]; then
+    echo "No active sessions" >&2
+    exit 0
+fi
+
+# Sort and display (uuid is hidden in last field after second |)
+selection="$(printf '%s\n' "${entries[@]}" | sort -t'|' -k1,1 -k2,2 -k3,3n | \
+    while IFS='|' read -r s1 s2 s3 display uuid_field; do
+        printf '%s|%s\n' "$display" "$uuid_field"
+    done | fzf \
     --ansi \
     --no-sort \
     --header="Priority Queue — select to jump" \
     --prompt="queue> " \
+    --delimiter='|' \
+    --with-nth=1 \
 )"
 
 if [[ -n "$selection" ]]; then
-    # Extract session name
-    session_name="$(echo "$selection" | awk '{print $2}')"
-    state_set_active "$session_name"
+    # Extract UUID from hidden field
+    selected_uuid="$(echo "$selection" | awk -F'|' '{print $NF}')"
+    state_set_active "$selected_uuid"
 
-    workspace="$(state_read_session "$session_name" "workspace" 2>/dev/null || echo "")"
+    workspace="$(state_read_session "$selected_uuid" "workspace" 2>/dev/null || echo "")"
     if [[ -n "$workspace" ]]; then
         hyprctl dispatch workspace "$workspace" 2>/dev/null || true
     fi

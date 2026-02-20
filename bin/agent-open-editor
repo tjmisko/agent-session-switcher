@@ -8,22 +8,26 @@ LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
 
 source "$LIB_DIR/config.sh"
 source "$LIB_DIR/state.sh"
-source "$LIB_DIR/manifest.sh"
 
 state_init
 
-active="$(state_get_active)"
+active_uuid="$(state_get_active)"
 
-if [[ -z "$active" ]]; then
+if [[ -z "$active_uuid" ]]; then
     echo "No active session" >&2
     exit 1
 fi
 
-# Get CWD from manifest, fall back to tmux environment
-cwd="$(manifest_get "$active" "cwd" 2>/dev/null || echo "")"
-if [[ -z "$cwd" ]]; then
-    cwd="$(tmux show-environment -t "$active" CLAUDE_CWD 2>/dev/null | cut -d= -f2- || echo "$HOME")"
+# Resolve tmux session name from UUID
+session_name="$(state_get_name "$active_uuid")"
+
+if [[ -z "$session_name" ]]; then
+    echo "Active session no longer exists" >&2
+    exit 1
 fi
+
+# Get CWD from tmux
+cwd="$(state_get_cwd "$session_name")"
 
 editor="$(config_get_default "defaults.editor" "nvim")"
 terminal="$(config_get_default "defaults.terminal" "wezterm")"

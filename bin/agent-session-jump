@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# agent-session-jump — Jump to the active session's workspace
+# agent-session-jump — Jump to the active session's workspace (UUID-keyed)
 
 set -euo pipefail
 
@@ -10,17 +10,17 @@ source "$LIB_DIR/state.sh"
 
 state_init
 
-active="$(state_get_active)"
+active_uuid="$(state_get_active)"
 
-if [[ -z "$active" ]]; then
+if [[ -z "$active_uuid" ]]; then
     echo "No active session" >&2
     exit 1
 fi
 
-workspace="$(state_read_session "$active" "workspace" 2>/dev/null || echo "")"
+workspace="$(state_read_session "$active_uuid" "workspace" 2>/dev/null || echo "")"
 
 if [[ -z "$workspace" ]]; then
-    echo "No workspace set for session '$active'" >&2
+    echo "No workspace set for active session" >&2
     exit 1
 fi
 
