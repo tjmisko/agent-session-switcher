@@ -11,7 +11,7 @@ SESSIONS_DIR="${SESSIONS_DIR:-$STATE_DIR/sessions}"
 
 # Source config for prefix lookup (guard against re-sourcing)
 _STATE_LIB_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
-if [[ -z "${CONFIG_DIR:-}" ]]; then
+if ! declare -f config_get >/dev/null 2>&1; then
     source "$_STATE_LIB_DIR/config.sh"
 fi
 
