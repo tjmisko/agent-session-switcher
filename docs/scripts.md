@@ -40,7 +40,7 @@ Creates a new agent session.
 - Creates tmux session, registers cleanup hook
 - Writes initial state, sets as active
 
-Usage: `agent-session-create [--agent <type>] [--cwd <path>] [--name <name>]`
+Usage: `agent-session-create [--resume UUID] [agent] [cwd] [name]`
 
 ### `agent-session-queue`
 Priority queue view showing sessions sorted by state → priority → idle time.
@@ -84,13 +84,13 @@ Waybar custom module output (JSON with Pango markup).
 ## Internal Scripts (`bin/_*`)
 
 ### `_agent-session-cleanup`
-Called by tmux `session-closed` hook. Idempotent cleanup:
-- Removes state file for dead session
-- Resets active session pointer
+Called by tmux `session-closed` hook. Marks session state=dead, writes dead_since timestamp. Preserves state dir for resume.
+- Marks session `state=dead` with `dead_since` timestamp
+- Resets active session pointer if it was the active session
 - Refreshes waybar
 - Exits AI mode if no sessions remain
 
 ### `_agent-session-rename`
-Thin wrapper around `state_rename_session()`. Renames tmux session + state file + active pointer. Called from picker with `ctrl-r`.
+Thin wrapper around `state_rename_session()`. Renames tmux session only. UUID and state dir are stable — no state migration needed. Called from picker with `ctrl-r`.
 
 Usage: `_agent-session-rename <old-name> <new-name>`
