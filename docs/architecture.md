@@ -12,19 +12,22 @@
 
 ### Runtime State (`$XDG_RUNTIME_DIR/agent-session-switcher/`)
 
-Ephemeral files that match the tmux lifecycle:
+Ephemeral files that track session metadata alongside tmux:
 
 ```
-active-session              # Name of currently focused session
+active-session              # UUID of the currently focused session
 mode                        # "ai" when AI mode is active
 waybar-pid                  # Bottom waybar PID
 sessions/
-  <session-name>            # Per-session state file:
-                            #   state=working|idle
-                            #   idle_since=<epoch>
+  <uuid>/
+    meta                    # Key=value metadata:
+                            #   state=working|idle|dead
                             #   agent=claude
+                            #   idle_since=<epoch>
+                            #   dead_since=<epoch>
                             #   workspace=3
-  <session-name>/
+                            #   resume_id=<agent-session-id>
+                            #   cwd=/path/to/project
     summary                 # Agent-written priority + summary
                             #   PRIORITY: <1-5>
                             #   SUMMARY: <one sentence>
@@ -32,10 +35,11 @@ sessions/
 
 ### Session Discovery
 
-`state_list_sessions()` reconciles state files with live tmux sessions:
-- Removes state files for dead tmux sessions
-- Creates state files for new tmux sessions matching configured agent prefixes
-- Returns only sessions that exist in both tmux and state
+`state_list_sessions()` reconciles state directories with live tmux sessions:
+- Marks orphaned state dirs (no matching tmux session) as `state=dead` with a `dead_since` timestamp
+- Bootstraps state for untracked live tmux sessions matching configured agent prefixes
+- Revives dead sessions whose tmux sessions have come back
+- Returns only UUIDs of currently live sessions
 
 ### Key Library Functions
 
@@ -46,14 +50,14 @@ sessions/
 - `config_list_agents()` — all configured agents
 - Uses `yq` for YAML parsing, discovers it across common paths
 
-**`lib/state.sh`** — Session state management:
-- `state_get_active()` — active session, validates against tmux, falls back
-- `state_set_active(name)` — marks session active
-- `state_list_sessions()` — reconciled session list
-- `state_read_session(name, field)` / `state_write_session(name, field, value)`
+**`lib/state.sh`** — UUID-keyed session state management:
+- `state_get_active()` — active UUID, validates against tmux, falls back to first live session
+- `state_set_active(uuid)` — writes UUID to `active-session`
+- `state_list_sessions()` — reconciled list of live session UUIDs
+- `state_read_session(uuid, field)` / `state_write_session(uuid, field, value)` — per-session metadata
 - `state_get_cwd(session)` — CWD from tmux pane
-- `state_get_agent_type(session)` — matches prefix to config
-- `state_rename_session(old, new)` — renames tmux session + state
+- `state_get_agent_type(session)` — matches session name prefix to agent config
+- `state_rename_session(old, new)` — renames the tmux session only (UUID and state dir are stable)
 
 ### No Manifest
 
@@ -62,11 +66,21 @@ The original design included `manifest.json` for persistent session state across
 ## Session Lifecycle
 
 ```
-agent-session-create
-  → tmux new-session with agent command
-  → registers session-closed hook → _agent-session-cleanup
-  → writes initial state file
-  → sets as active session
+agent-session-create [agent] [cwd] [name]
+  → generates UUID, creates $SESSIONS_DIR/<uuid>/meta
+  → writes launcher script to state dir (avoids tmux quoting issues)
+  → spawns tmux session running the launcher
+  → sets @agent_uuid tmux option for UUID lookup
+  → registers session-closed hook → _agent-session-cleanup $uuid
+  → sets AGENT_STATE_DIR via tmux set-environment
+  → writes initial state (idle) and sets as active session
+
+agent-session-create --resume $uuid
+  → reads resume_id from old session's meta
+  → generates new UUID, creates new state dir
+  → starts agent with resume flag + inherited resume_id
+  → copies summary, inherits workspace and cwd from old session
+  → deletes old session's state dir
 
 agent-session-overlay (on picker select)
   → updates active session
@@ -74,11 +88,17 @@ agent-session-overlay (on picker select)
   → enters AI mode (starts waybar HUD)
   → spawns overlay terminal attached to tmux session
 
-_agent-session-cleanup (tmux hook on session close)
-  → removes state file
-  → resets active session
+_agent-session-cleanup $uuid (tmux hook on session close)
+  → marks state=dead, writes dead_since timestamp
+  → saves CWD to meta for future resume
+  → preserves state dir (never deletes — supports resume)
+  → resets active session to next live session
   → refreshes waybar
   → exits AI mode if no sessions remain
+
+dismiss (explicit user action, e.g. ctrl-x)
+  → calls state_remove_session which rm -rf's the state dir
+  → permanently discards session state (no resume possible)
 ```
 
 ## Hooks
@@ -89,4 +109,4 @@ Currently implemented: `hooks/claude/`
 - `prompt-submit` — sets `state=working`, clears `idle_since`, refreshes waybar + workspace colors
 - `stop` — sets `state=idle`, writes `idle_since`, refreshes waybar + workspace colors, optional desktop notification
 
-Hooks export `AGENT_STATE_DIR` so agents can write summary/priority files.
+The create script sets `AGENT_STATE_DIR` via `tmux set-environment` so hooks and agents can write summary/priority files.
