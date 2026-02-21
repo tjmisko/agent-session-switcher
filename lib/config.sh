@@ -77,5 +77,8 @@ config_get_agent() {
 
 config_list_agents() {
     _config_ensure
-    "$YQ" -r '.agents | keys | .[]' "$CONFIG_FILE" 2>/dev/null
+    {
+        "$YQ" -r '.agents | keys | .[]' "$CONFIG_FILE" 2>/dev/null
+        "$YQ" -r '.agents | keys | .[]' "$DEFAULT_CONFIG" 2>/dev/null
+    } | sort -u
 }

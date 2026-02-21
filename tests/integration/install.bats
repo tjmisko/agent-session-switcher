@@ -54,7 +54,7 @@ teardown() {
     [[ "$count" -eq 1 ]]
 }
 
-@test "should create state directory" {
+@test "should not create persistent state directory" {
     "$PROJECT_ROOT/install.sh"
-    assert_dir_exists "$XDG_STATE_HOME/agent-session-switcher"
+    refute [ -d "$XDG_STATE_HOME/agent-session-switcher" ]
 }
