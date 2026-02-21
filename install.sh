@@ -5,7 +5,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/agent-session-switcher"
-STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/agent-session-switcher"
 BIN_DIR="$SCRIPT_DIR/bin"
 
 echo "Agent Session Switcher — Install"
@@ -20,10 +19,6 @@ if [[ ! -f "$CONFIG_DIR/config.yaml" ]]; then
 else
     echo "Config exists: $CONFIG_DIR/config.yaml"
 fi
-
-# Create state directory
-mkdir -p "$STATE_DIR"
-echo "State dir: $STATE_DIR"
 
 # Make all bin scripts executable
 chmod +x "$BIN_DIR"/*
@@ -67,6 +62,5 @@ echo "  1. Restart your shell or run: source ~/.bashrc"
 echo "  2. Add to hyprland.conf: source = $SCRIPT_DIR/integration/hyprland.conf"
 echo "  3. Add to nvim config: vim.opt.rtp:prepend('$SCRIPT_DIR')"
 echo "     require('agent-sessions').setup()"
-echo "  4. (Optional) Add boot restore: exec-once = agent-session-restore"
 echo
 echo "Done!"

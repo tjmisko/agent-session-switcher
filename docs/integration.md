@@ -15,7 +15,7 @@ Add to your `~/.config/hypr/hyprland.conf`:
 # Primary picker (configured in config.yaml under defaults.picker)
 bind = $mainMod, A, exec, ~/.config/scripts/hypr-float-center 50 --class agentPicker agent-session-picker
 
-# Alternate picker (defaults.alternate_picker)
+# Rofi picker (alternative to fzf picker above)
 bind = $mainMod SHIFT, A, exec, agent-session-picker-rofi
 
 # Open editor in session CWD

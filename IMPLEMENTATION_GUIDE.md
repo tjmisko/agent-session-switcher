@@ -79,7 +79,7 @@ $XDG_RUNTIME_DIR/agent-session-switcher/
 ├── waybar-pid              # PID of bottom waybar instance
 └── sessions/
     └── <uuid>/
-        ├── meta            # key=value: state, agent, idle_since, workspace, resume_id, cwd
+        ├── meta            # key=value: state, agent, idle_since, dead_since, workspace, resume_id, cwd
         └── summary         # Agent-written: PRIORITY: N / SUMMARY: text
 ```
 

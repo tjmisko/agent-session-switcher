@@ -14,12 +14,12 @@ defaults:
   terminal: wezterm                   # Terminal emulator (wezterm, alacritty, kitty)
   editor: nvim                        # Editor for agent-open-editor
   window_manager: hyprland            # WM for dispatch commands (hyprland, i3, sway)
-  picker: fzf                         # Session picker (fzf, rofi, wofi, dmenu)
-  alternate_picker: rofi              # Alternate picker on secondary keybinding
+  picker: rofi                         # Session picker (fzf, rofi, wofi, dmenu)
 
 agents:
   claude:
     command: claude                   # CLI command to launch
+    resume_flag: "--resume"           # Flag for resuming dead sessions
     session_prefix: "claude-"         # tmux session name prefix
     session_id_flag: "--session-id"   # Flag for UUID-based session tracking
     system_prompt_flag: "--append-system-prompt"  # Flag for injecting system prompt
