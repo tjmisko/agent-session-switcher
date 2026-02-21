@@ -176,3 +176,21 @@ For detailed documentation, see:
 15. Nvim picker + context sending works
 16. New agent in config.yaml works with picker/HUD
 17. `install.sh` adds to PATH, creates default user config
+
+## Testing
+
+### Standard Tests
+
+```bash
+bats tests/unit/ tests/integration/
+```
+
+Runs all unit and integration tests. Tests use isolated tmux sockets and temporary directories — no system state is affected.
+
+### Window Manager Tests
+
+```bash
+RUN_WM_TESTS=1 bats tests/wm/
+```
+
+Requires a live Hyprland session. Tests window rules, workspace dispatch, and fullscreen overlay behavior. Skipped by default.

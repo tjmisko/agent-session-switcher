@@ -8,62 +8,92 @@ setup() {
     write_test_config
     source "$PROJECT_ROOT/lib/state.sh"
 
-    # Stub waybar-workspace-colors.sh
-    mkdir -p "$PROJECT_ROOT/integration"
+    # Stub agent-mode-toggle (called by hooks for waybar refresh)
+    _stub_command "agent-mode-toggle"
 }
 
 teardown() {
     teardown_common
 }
 
-@test "prompt-submit should set state=working" {
+# Helper: run a command inside an isolated tmux session and wait for completion
+_run_in_session() {
+    local session="$1"
+    shift
+    local cmd="$*"
+
+    # Use a sentinel file to detect when the command finishes
+    local sentinel="$BATS_TEST_TMPDIR/sentinel-$$-$RANDOM"
+
+    tmux send-keys -t "$session" "$cmd; echo done > '$sentinel'" Enter
+
+    local elapsed=0
+    while [[ ! -f "$sentinel" ]]; do
+        sleep 0.1
+        elapsed=$(( elapsed + 1 ))
+        if (( elapsed > 50 )); then
+            echo "Timed out waiting for command in session $session" >&2
+            return 1
+        fi
+    done
+}
+
+@test "prompt-submit hook should set state=working" {
     local uuid
     uuid="$(_create_test_session "claude-1")"
 
-    # Simulate running inside tmux session
-    # The hook uses `tmux display-message -p '#{session_name}'`
-    # In our isolated tmux we can attach and run
-    tmux send-keys -t "claude-1" \
-        "source '$PROJECT_ROOT/lib/state.sh' && state_write_session '$uuid' 'state' 'working' && state_write_session '$uuid' 'idle_since' ''" Enter
-
-    sleep 0.3
+    # Run the actual prompt-submit hook inside the tmux session
+    _run_in_session "claude-1" \
+        "STATE_DIR='$STATE_DIR' SESSIONS_DIR='$SESSIONS_DIR' CONFIG_DIR='$CONFIG_DIR' CONFIG_FILE='$CONFIG_FILE' DEFAULT_CONFIG='$DEFAULT_CONFIG' '$PROJECT_ROOT/hooks/claude/prompt-submit'"
 
     run state_read_session "$uuid" "state"
     assert_output "working"
+
+    # idle_since should be cleared
+    run state_read_session "$uuid" "idle_since"
+    assert_output ""
 }
 
-@test "stop should set state=idle and idle_since" {
+@test "stop hook should set state=idle and write idle_since" {
+    local uuid
+    uuid="$(_create_test_session "claude-1")"
+    state_write_session "$uuid" "state" "working"
+    state_write_session "$uuid" "idle_since" ""
+
+    # Run the actual stop hook (with empty stdin)
+    _run_in_session "claude-1" \
+        "echo '' | STATE_DIR='$STATE_DIR' SESSIONS_DIR='$SESSIONS_DIR' CONFIG_DIR='$CONFIG_DIR' CONFIG_FILE='$CONFIG_FILE' DEFAULT_CONFIG='$DEFAULT_CONFIG' '$PROJECT_ROOT/hooks/claude/stop'"
+
+    run state_read_session "$uuid" "state"
+    assert_output "idle"
+
+    local idle_since
+    idle_since="$(state_read_session "$uuid" "idle_since")"
+    [[ -n "$idle_since" ]]
+    # Should be a recent epoch timestamp
+    [[ "$idle_since" =~ ^[0-9]+$ ]]
+}
+
+@test "stop hook should capture resume_id from JSON payload" {
     local uuid
     uuid="$(_create_test_session "claude-1")"
     state_write_session "$uuid" "state" "working"
 
-    # Simulate stop hook state changes
-    state_write_session "$uuid" "state" "idle"
-    state_write_session "$uuid" "idle_since" "$(date +%s)"
-
-    run state_read_session "$uuid" "state"
-    assert_output "idle"
-    [[ -n "$(state_read_session "$uuid" "idle_since")" ]]
-}
-
-@test "stop should capture resume_id from JSON payload" {
-    local uuid
-    uuid="$(_create_test_session "claude-1")"
-
-    # Simulate what the stop hook does with a JSON payload
-    local payload='{"session_id": "test-session-id-abc"}'
-    local session_id
-    session_id="$(echo "$payload" | jq -r '.session_id // empty' 2>/dev/null || echo "")"
-    state_write_session "$uuid" "resume_id" "$session_id"
+    # Pipe a JSON payload with session_id to the stop hook's stdin
+    _run_in_session "claude-1" \
+        "echo '{\"session_id\": \"test-resume-abc123\"}' | STATE_DIR='$STATE_DIR' SESSIONS_DIR='$SESSIONS_DIR' CONFIG_DIR='$CONFIG_DIR' CONFIG_FILE='$CONFIG_FILE' DEFAULT_CONFIG='$DEFAULT_CONFIG' '$PROJECT_ROOT/hooks/claude/stop'"
 
     run state_read_session "$uuid" "resume_id"
-    assert_output "test-session-id-abc"
+    assert_output "test-resume-abc123"
 }
 
-@test "hooks should exit gracefully outside tmux" {
-    # When tmux display-message fails (not in tmux), hooks should exit 0
-    # Test by running hook with no tmux session context
-    run bash -c "TMUX= '$PROJECT_ROOT/hooks/claude/prompt-submit'" </dev/null
-    # Should exit cleanly (0) since it can't get session name
+@test "prompt-submit hook should exit gracefully outside tmux" {
+    # Run hook outside of tmux context (TMUX unset)
+    run bash -c "TMUX= STATE_DIR='$STATE_DIR' SESSIONS_DIR='$SESSIONS_DIR' CONFIG_DIR='$CONFIG_DIR' CONFIG_FILE='$CONFIG_FILE' DEFAULT_CONFIG='$DEFAULT_CONFIG' '$PROJECT_ROOT/hooks/claude/prompt-submit'" </dev/null
+    assert_success
+}
+
+@test "stop hook should exit gracefully outside tmux" {
+    run bash -c "echo '' | TMUX= STATE_DIR='$STATE_DIR' SESSIONS_DIR='$SESSIONS_DIR' CONFIG_DIR='$CONFIG_DIR' CONFIG_FILE='$CONFIG_FILE' DEFAULT_CONFIG='$DEFAULT_CONFIG' '$PROJECT_ROOT/hooks/claude/stop'"
     assert_success
 }
