@@ -1,0 +1,20 @@
+defaults:
+  agent: claude
+  terminal: wezterm
+  editor: nvim
+  window_manager: hyprland
+  picker: rofi
+
+agents:
+  claude:
+    command: bash
+    session_prefix: "claude-"
+    hooks: true
+  aider:
+    command: bash
+    session_prefix: "aider-"
+    hooks: false
+  cursor:
+    command: bash
+    session_prefix: "cursor-"
+    hooks: false

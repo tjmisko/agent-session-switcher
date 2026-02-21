@@ -3,6 +3,7 @@ defaults:
   terminal: wezterm
   editor: nvim
   window_manager: hyprland
+  picker: rofi  # "rofi" or "fzf"
 
 agents:
   claude:

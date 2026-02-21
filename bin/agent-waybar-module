@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# agent-waybar-module — Waybar custom module output (JSON with pango markup)
+# agent-waybar-module — Waybar custom module output (JSON with pango markup, UUID-keyed)
 
 set -euo pipefail
 
@@ -15,9 +15,12 @@ active="$(state_get_active)"
 has_working=false
 entries=()
 
-for session in $(state_list_sessions); do
-    state="$(state_read_session "$session" "state" 2>/dev/null || echo "idle")"
-    idle_since="$(state_read_session "$session" "idle_since" 2>/dev/null || echo "")"
+for uuid in $(state_list_sessions); do
+    name="$(state_get_name "$uuid")"
+    [[ -n "$name" ]] || continue
+
+    state="$(state_read_session "$uuid" "state" 2>/dev/null || echo "idle")"
+    idle_since="$(state_read_session "$uuid" "idle_since" 2>/dev/null || echo "")"
 
     # Calculate duration
     if [[ "$state" == "working" ]]; then
@@ -42,8 +45,8 @@ for session in $(state_list_sessions); do
     fi
 
     # Format entry
-    display_name="$session"
-    if [[ "$session" == "$active" ]]; then
+    display_name="$name"
+    if [[ "$uuid" == "$active" ]]; then
         entry="<span color='${color}' weight='bold'>${display_name}: ${state}${duration_label}</span>"
     else
         entry="<span color='${color}'>${display_name}: ${state}${duration_label}</span>"

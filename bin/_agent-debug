@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# _agent-debug — Diagnostic tool for session state issues
+
+set -euo pipefail
+
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
+
+source "$LIB_DIR/state.sh"
+
+state_init
+
+echo "=== tmux sessions ==="
+tmux list-sessions -F '#{session_name}' 2>/dev/null || echo "(no tmux server)"
+echo ""
+
+echo "=== tmux sessions with @agent_uuid ==="
+if tmux has-session 2>/dev/null; then
+    while IFS= read -r name; do
+        uuid="$(_tmux_get_uuid "$name")"
+        echo "  $name -> uuid=${uuid:-<not set>}"
+    done < <(tmux list-sessions -F '#{session_name}' 2>/dev/null)
+else
+    echo "(no tmux server)"
+fi
+echo ""
+
+echo "=== _tmux_agent_sessions() ==="
+result="$(_tmux_agent_sessions)"
+if [[ -n "$result" ]]; then
+    echo "$result" | while IFS='|' read -r uuid name; do
+        echo "  uuid=$uuid  name=$name"
+    done
+else
+    echo "(none found)"
+fi
+echo ""
+
+echo "=== State dirs ($SESSIONS_DIR) ==="
+if [[ -d "$SESSIONS_DIR" ]]; then
+    for dir in "$SESSIONS_DIR"/*/; do
+        [[ -d "$dir" ]] || { echo "(empty)"; continue; }
+        uuid="$(basename "$dir")"
+        echo "  $uuid/"
+        if [[ -f "$dir/meta" ]]; then
+            sed 's/^/    /' "$dir/meta"
+        else
+            echo "    (no meta file)"
+        fi
+        if [[ -f "$dir/summary" ]]; then
+            echo "    [summary exists]"
+        fi
+    done
+else
+    echo "(dir does not exist)"
+fi
+echo ""
+
+echo "=== Active session ==="
+active_file="$STATE_DIR/active-session"
+if [[ -f "$active_file" ]]; then
+    active="$(cat "$active_file")"
+    echo "  UUID: $active"
+    name="$(state_get_name "$active")"
+    echo "  Name: ${name:-(not found in tmux)}"
+else
+    echo "  (no active session file)"
+fi
+echo ""
+
+echo "=== state_list_sessions() ==="
+live="$(state_list_sessions)"
+if [[ -n "$live" ]]; then
+    echo "$live"
+else
+    echo "(none)"
+fi
+echo ""
+
+echo "=== state_list_dead_sessions() ==="
+dead="$(state_list_dead_sessions)"
+if [[ -n "$dead" ]]; then
+    echo "$dead"
+else
+    echo "(none)"
+fi

@@ -11,26 +11,27 @@ source "$LIB_DIR/state.sh"
 
 state_init
 
-# Determine session name from tmux
+# Determine session name and UUID from tmux
 session_name="$(tmux display-message -p '#{session_name}' 2>/dev/null || echo "")"
 
 if [[ -z "$session_name" ]]; then
     exit 0
 fi
 
-# Only act on tracked sessions
-if ! state_session_exists "$session_name"; then
+uuid="$(state_find_uuid "$session_name")"
+
+if [[ -z "$uuid" ]]; then
     exit 0
 fi
 
 # Set state to working
-state_write_session "$session_name" "state" "working"
+state_write_session "$uuid" "state" "working"
 
 # Clear idle_since
-state_write_session "$session_name" "idle_since" ""
+state_write_session "$uuid" "idle_since" ""
 
 # Export state dir for summary writing
-export AGENT_STATE_DIR="$SESSIONS_DIR/$session_name"
+export AGENT_STATE_DIR="$SESSIONS_DIR/$uuid"
 
 # Refresh waybar
 "$PROJECT_ROOT/bin/agent-mode-toggle" refresh

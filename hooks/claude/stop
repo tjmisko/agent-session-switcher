@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # Claude Code hook: stop — fired when agent stops responding
+# Captures session_id for resume support.
 
 set -euo pipefail
+
+# Read JSON payload from stdin before anything else
+payload="$(cat)"
 
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
@@ -11,21 +15,30 @@ source "$LIB_DIR/state.sh"
 
 state_init
 
-# Determine session name from tmux
+# Determine session name and UUID from tmux
 session_name="$(tmux display-message -p '#{session_name}' 2>/dev/null || echo "")"
 
 if [[ -z "$session_name" ]]; then
     exit 0
 fi
 
-# Only act on tracked sessions
-if ! state_session_exists "$session_name"; then
+uuid="$(state_find_uuid "$session_name")"
+
+if [[ -z "$uuid" ]]; then
     exit 0
 fi
 
 # Set state to idle
-state_write_session "$session_name" "state" "idle"
-state_write_session "$session_name" "idle_since" "$(date +%s)"
+state_write_session "$uuid" "state" "idle"
+state_write_session "$uuid" "idle_since" "$(date +%s)"
+
+# Capture session_id for resume support
+if [[ -n "$payload" ]]; then
+    session_id="$(echo "$payload" | jq -r '.session_id // empty' 2>/dev/null || echo "")"
+    if [[ -n "$session_id" ]]; then
+        state_write_session "$uuid" "resume_id" "$session_id"
+    fi
+fi
 
 # Refresh waybar
 "$PROJECT_ROOT/bin/agent-mode-toggle" refresh
