@@ -1,0 +1,29 @@
+defaults:
+  agent: claude
+  terminal: wezterm
+  editor: nvim
+  window_manager: hyprland
+  picker: rofi
+
+agents:
+  claude:
+    command: bash
+    resume_flag: "--resume"
+    session_id_flag: "--session-id"
+    system_prompt_flag: "--append-system-prompt"
+    session_prefix: "claude-"
+    hooks: true
+  aider:
+    command: bash
+    session_prefix: "aider-"
+    hooks: false
+  cursor:
+    command: bash
+    session_prefix: "cursor-"
+    hooks: false
+
+system_prompt_additions: |
+  Test prompt additions
+
+priority_rules: |
+  Test priority rules
