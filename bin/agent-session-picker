@@ -3,6 +3,9 @@
 
 set -euo pipefail
 
+exec 2>/tmp/agent-session-picker.log
+set -x
+
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
 
@@ -96,8 +99,8 @@ _build_session_list() {
 }
 
 _extract_uuid() {
-    # UUID is the last whitespace-separated field
-    awk '{print $NF}'
+    # Strip ANSI escape codes, then grab last field (UUID)
+    sed 's/\x1b\[[0-9;]*m//g' | awk '{print $NF}'
 }
 
 _pick_session() {

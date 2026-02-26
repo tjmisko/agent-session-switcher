@@ -3,6 +3,9 @@
 
 set -euo pipefail
 
+exec 2>/tmp/agent-session-create.log
+set -x
+
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
 
