@@ -211,7 +211,7 @@ state_list_sessions() {
         live_uuids["$uuid"]=1
     done <<< "$live_pairs"
 
-    # 3. Mark orphaned state dirs as dead
+    # 3. Delete orphaned state dirs
     if [[ -d "$SESSIONS_DIR" ]]; then
         local dir
         for dir in "$SESSIONS_DIR"/*/; do
@@ -219,12 +219,7 @@ state_list_sessions() {
             local dir_uuid
             dir_uuid="$(basename "$dir")"
             if [[ -z "${live_uuids[$dir_uuid]+x}" ]]; then
-                local current_state
-                current_state="$(state_read_session "$dir_uuid" "state" 2>/dev/null || echo "")"
-                if [[ "$current_state" != "dead" ]]; then
-                    state_write_session "$dir_uuid" "state" "dead"
-                    state_write_session "$dir_uuid" "dead_since" "$(date +%s)"
-                fi
+                state_remove_session "$dir_uuid"
             fi
         done
     fi
@@ -238,10 +233,6 @@ state_list_sessions() {
             agent_type="$(state_get_agent_type "$name")"
             state_write_session "$uuid" "state" "idle"
             state_write_session "$uuid" "agent" "$agent_type"
-            state_write_session "$uuid" "idle_since" "$(date +%s)"
-        elif [[ "$(state_read_session "$uuid" "state" 2>/dev/null)" == "dead" ]]; then
-            # Session came back to life
-            state_write_session "$uuid" "state" "idle"
             state_write_session "$uuid" "idle_since" "$(date +%s)"
         fi
     done <<< "$live_pairs"
