@@ -93,7 +93,37 @@ fi
 # Write launcher script to avoid tmux shell-command quoting issues
 # (tmux joins args with spaces and passes to sh -c, breaking multiline values)
 launcher="$agent_state_dir/launch.sh"
-printf '#!/usr/bin/env bash\nunset CLAUDECODE\nexec %s\n' "${cmd_args[*]@Q}" > "$launcher"
+cat > "$launcher" <<LAUNCHER
+#!/usr/bin/env bash
+set -euo pipefail
+
+source "$LIB_DIR/log.sh"
+log_init
+log_msg INFO "launcher" "Starting session: uuid=$uuid cmd=${cmd_args[0]}"
+log_env "launcher"
+
+# Validate command exists
+if ! command -v ${cmd_args[0]@Q} &>/dev/null; then
+    log_msg ERROR "launcher" "Command not found: ${cmd_args[0]}"
+    echo "ERROR: command not found: ${cmd_args[0]}" >&2
+    sleep 5
+    exit 127
+fi
+
+# Check TTY availability
+if [[ ! -t 0 ]] || [[ ! -t 1 ]]; then
+    log_msg WARN "launcher" "No TTY available (stdin=$(test -t 0 && echo yes || echo no), stdout=$(test -t 1 && echo yes || echo no))"
+fi
+
+unset CLAUDECODE
+exec ${cmd_args[*]@Q}
+
+# If exec fails, log and give user a chance to see the error
+log_msg ERROR "launcher" "exec failed for: ${cmd_args[*]}"
+echo "ERROR: failed to exec ${cmd_args[0]}" >&2
+sleep 5
+exit 1
+LAUNCHER
 chmod +x "$launcher"
 
 # Ensure tmux server is running
