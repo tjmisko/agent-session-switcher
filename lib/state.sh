@@ -211,7 +211,9 @@ state_list_sessions() {
         live_uuids["$uuid"]=1
     done <<< "$live_pairs"
 
-    # 3. Delete orphaned state dirs
+    # 3. Delete orphaned and stale pending state dirs
+    local now
+    now="$(date +%s)"
     if [[ -d "$SESSIONS_DIR" ]]; then
         local dir
         for dir in "$SESSIONS_DIR"/*/; do
@@ -219,7 +221,18 @@ state_list_sessions() {
             local dir_uuid
             dir_uuid="$(basename "$dir")"
             if [[ -z "${live_uuids[$dir_uuid]+x}" ]]; then
-                state_remove_session "$dir_uuid"
+                # Check for stale pending sessions (failed creation)
+                local dir_state
+                dir_state="$(state_read_session "$dir_uuid" "state" 2>/dev/null || echo "")"
+                if [[ "$dir_state" == "pending" ]]; then
+                    local created_at
+                    created_at="$(state_read_session "$dir_uuid" "created_at" 2>/dev/null || echo "0")"
+                    if (( now - created_at > 30 )); then
+                        state_remove_session "$dir_uuid"
+                    fi
+                else
+                    state_remove_session "$dir_uuid"
+                fi
             fi
         done
     fi
