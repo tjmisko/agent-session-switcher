@@ -113,7 +113,7 @@ fi
 # Write launcher script to avoid tmux shell-command quoting issues
 # (tmux joins args with spaces and passes to sh -c, breaking multiline values)
 launcher="$agent_state_dir/launch.sh"
-printf '#!/usr/bin/env bash\nexec %s\n' "${cmd_args[*]@Q}" > "$launcher"
+printf '#!/usr/bin/env bash\nunset CLAUDECODE\nexec %s\n' "${cmd_args[*]@Q}" > "$launcher"
 chmod +x "$launcher"
 
 # Create tmux session
@@ -128,6 +128,7 @@ tmux set-option -t "$name" @agent_uuid "$uuid"
 
 # Set tmux environment variables
 tmux set-environment -t "$name" AGENT_STATE_DIR "$agent_state_dir"
+tmux set-environment -t "$name" -u CLAUDECODE
 
 # Write state file
 state_write_session "$uuid" "state" "idle"
