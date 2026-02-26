@@ -74,19 +74,6 @@ _run_in_session() {
     [[ "$idle_since" =~ ^[0-9]+$ ]]
 }
 
-@test "stop hook should capture resume_id from JSON payload" {
-    local uuid
-    uuid="$(_create_test_session "claude-1")"
-    state_write_session "$uuid" "state" "working"
-
-    # Pipe a JSON payload with session_id to the stop hook's stdin
-    _run_in_session "claude-1" \
-        "echo '{\"session_id\": \"test-resume-abc123\"}' | STATE_DIR='$STATE_DIR' SESSIONS_DIR='$SESSIONS_DIR' CONFIG_DIR='$CONFIG_DIR' CONFIG_FILE='$CONFIG_FILE' DEFAULT_CONFIG='$DEFAULT_CONFIG' '$PROJECT_ROOT/hooks/claude/stop'"
-
-    run state_read_session "$uuid" "resume_id"
-    assert_output "test-resume-abc123"
-}
-
 @test "prompt-submit hook should exit gracefully outside tmux" {
     # Run hook outside of tmux context (TMUX unset)
     run bash -c "TMUX= STATE_DIR='$STATE_DIR' SESSIONS_DIR='$SESSIONS_DIR' CONFIG_DIR='$CONFIG_DIR' CONFIG_FILE='$CONFIG_FILE' DEFAULT_CONFIG='$DEFAULT_CONFIG' '$PROJECT_ROOT/hooks/claude/prompt-submit'" </dev/null

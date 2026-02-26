@@ -97,31 +97,3 @@ teardown() {
     assert_output --partial "_agent-session-cleanup"
 }
 
-@test "should handle resume mode" {
-    # Create first session
-    local name1
-    name1="$("$PROJECT_ROOT/bin/agent-session-create")"
-    local uuid1
-    uuid1="$(tmux show-option -t "$name1" -v @agent_uuid)"
-
-    # Write resume data to first session
-    _write_meta "$uuid1" "resume_id" "test-resume-id"
-    _write_meta "$uuid1" "workspace" "3"
-    _write_meta "$uuid1" "cwd" "/tmp"
-
-    # Kill first session's tmux (simulate death)
-    tmux kill-session -t "$name1" 2>/dev/null || true
-
-    # Resume
-    run "$PROJECT_ROOT/bin/agent-session-create" --resume "$uuid1"
-    assert_success
-    local new_name="$output"
-    local new_uuid
-    new_uuid="$(tmux show-option -t "$new_name" -v @agent_uuid)"
-
-    # Old state dir should be gone
-    [[ ! -d "$SESSIONS_DIR/$uuid1" ]]
-    # New session should have inherited workspace
-    run _read_meta "$new_uuid" "workspace"
-    assert_output "3"
-}

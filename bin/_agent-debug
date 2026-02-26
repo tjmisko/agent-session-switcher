@@ -77,10 +77,3 @@ else
 fi
 echo ""
 
-echo "=== state_list_dead_sessions() ==="
-dead="$(state_list_dead_sessions)"
-if [[ -n "$dead" ]]; then
-    echo "$dead"
-else
-    echo "(none)"
-fi

@@ -238,18 +238,6 @@ _run_state() {
     assert_output "idle"
 }
 
-# --- Dead sessions ---
-
-@test "should list dead sessions" {
-    local orphan_uuid="dead-uuid-456"
-    state_write_session "$orphan_uuid" "state" "dead"
-    state_write_session "$orphan_uuid" "agent" "claude"
-
-    run _run_state state_list_dead_sessions
-    assert_success
-    assert_line "$orphan_uuid"
-}
-
 # --- Helpers ---
 
 @test "should detect agent type from session prefix" {
