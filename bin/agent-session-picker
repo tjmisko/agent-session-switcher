@@ -84,7 +84,7 @@ _pick_session() {
         --no-sort \
         --prompt="agent> " \
         --header="enter:attach  ctrl-n:new  ctrl-x:kill  ctrl-r:rename" \
-        --bind="ctrl-n:execute($SCRIPT_DIR/agent-session-create)+reload($SCRIPT_DIR/agent-session-picker --list)" \
+        --bind="ctrl-n:execute-silent($SCRIPT_DIR/agent-session-create --open)+abort" \
         --bind="ctrl-x:execute-silent($SCRIPT_DIR/_agent-session-picker-action kill {-1})+reload($SCRIPT_DIR/agent-session-picker --list)" \
         --bind="ctrl-r:execute-silent($SCRIPT_DIR/_agent-session-rename {2} {q})+reload($SCRIPT_DIR/agent-session-picker --list)" \
         --preview="$SCRIPT_DIR/_agent-session-picker-preview {-1}" \

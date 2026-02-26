@@ -22,9 +22,14 @@ state_init
 agent=""
 cwd=""
 name=""
+open_overlay=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --open)
+            open_overlay=true
+            shift
+            ;;
         *)
             # Positional args: agent, cwd, name
             if [[ -z "$agent" ]]; then
@@ -153,4 +158,12 @@ state_write_session "$uuid" "idle_since" "$(date +%s)"
 # Set as active
 state_set_active "$uuid"
 
+log_msg INFO "agent-session-create" "Session created: name=$name uuid=$uuid"
+
 echo "$name"
+
+# If --open was passed, spawn an overlay window
+if [[ "$open_overlay" == true ]]; then
+    "$SCRIPT_DIR/agent-session-overlay" "$name" &
+    disown
+fi
