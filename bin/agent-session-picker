@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# agent-session-picker — FZF session picker (UUID-keyed, with dead session support)
+# agent-session-picker — FZF session picker (UUID-keyed)
 
 set -euo pipefail
 
@@ -70,36 +70,6 @@ _build_session_list() {
         printf "%s \033[%sm%-20s %-8s %-8s\033[0m %s \033[90m%s\033[0m\n" \
             "$indicator" "$color_code" "$name" "$state" "$duration_str" "$cwd" "$uuid"
     done
-
-    # --- Dead / resumable sessions ---
-    for uuid in $(state_list_dead_sessions); do
-        local agent summary_text dead_since cwd
-
-        agent="$(state_read_session "$uuid" "agent" 2>/dev/null || echo "?")"
-        dead_since="$(state_read_session "$uuid" "dead_since" 2>/dev/null || echo "")"
-        cwd="$(state_read_session "$uuid" "cwd" 2>/dev/null || echo "")"
-        cwd="${cwd/#$HOME/\~}"
-
-        # Read summary if available
-        summary_text=""
-        if [[ -f "$SESSIONS_DIR/$uuid/summary" ]]; then
-            summary_text="$(grep '^SUMMARY:' "$SESSIONS_DIR/$uuid/summary" 2>/dev/null | cut -d: -f2- | xargs || echo "")"
-        fi
-
-        local duration_str=""
-        if [[ -n "$dead_since" ]]; then
-            local elapsed=$(( now - dead_since ))
-            duration_str="dead $(_format_duration "$elapsed")"
-        else
-            duration_str="dead"
-        fi
-
-        local display="${agent}(dead)"
-        [[ -z "$summary_text" ]] || display="${display}: ${summary_text}"
-
-        printf "  \033[90m%-20s %-8s %-8s %s\033[0m \033[90m%s\033[0m\n" \
-            "$display" "$agent" "$duration_str" "$cwd" "$uuid"
-    done
 }
 
 _extract_uuid() {
@@ -113,7 +83,7 @@ _pick_session() {
         --ansi \
         --no-sort \
         --prompt="agent> " \
-        --header="enter:attach/resume  ctrl-n:new  ctrl-x:kill/dismiss  ctrl-r:rename" \
+        --header="enter:attach  ctrl-n:new  ctrl-x:kill  ctrl-r:rename" \
         --bind="ctrl-n:execute($SCRIPT_DIR/agent-session-create)+reload($SCRIPT_DIR/agent-session-picker --list)" \
         --bind="ctrl-x:execute-silent($SCRIPT_DIR/_agent-session-picker-action kill {-1})+reload($SCRIPT_DIR/agent-session-picker --list)" \
         --bind="ctrl-r:execute-silent($SCRIPT_DIR/_agent-session-rename {2} {q})+reload($SCRIPT_DIR/agent-session-picker --list)" \
@@ -135,22 +105,9 @@ fi
 selected_uuid="$(_pick_session)"
 
 if [[ -n "$selected_uuid" ]]; then
-    # Check if this is a dead session (resume) or live (attach)
-    local_state="$(state_read_session "$selected_uuid" "state" 2>/dev/null || echo "")"
-
-    if [[ "$local_state" == "dead" ]]; then
-        # Resume: create new session from dead one
-        new_name="$("$SCRIPT_DIR/agent-session-create" --resume "$selected_uuid")"
-        if [[ -n "$new_name" ]]; then
-            "$SCRIPT_DIR/agent-session-overlay" "$new_name" &
-            disown
-        fi
-    else
-        # Live: attach via overlay
-        session_name="$(state_get_name "$selected_uuid")"
-        if [[ -n "$session_name" ]]; then
-            "$SCRIPT_DIR/agent-session-overlay" "$session_name" &
-            disown
-        fi
+    session_name="$(state_get_name "$selected_uuid")"
+    if [[ -n "$session_name" ]]; then
+        "$SCRIPT_DIR/agent-session-overlay" "$session_name" &
+        disown
     fi
 fi

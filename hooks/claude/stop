@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # Claude Code hook: stop — fired when agent stops responding
-# Captures session_id for resume support.
 
 set -euo pipefail
 
@@ -31,14 +30,6 @@ fi
 # Set state to idle
 state_write_session "$uuid" "state" "idle"
 state_write_session "$uuid" "idle_since" "$(date +%s)"
-
-# Capture session_id for resume support
-if [[ -n "$payload" ]]; then
-    session_id="$(echo "$payload" | jq -r '.session_id // empty' 2>/dev/null || echo "")"
-    if [[ -n "$session_id" ]]; then
-        state_write_session "$uuid" "resume_id" "$session_id"
-    fi
-fi
 
 # Refresh waybar
 "$PROJECT_ROOT/bin/agent-mode-toggle" refresh

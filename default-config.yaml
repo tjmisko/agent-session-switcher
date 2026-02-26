@@ -8,7 +8,6 @@ defaults:
 agents:
   claude:
     command: claude
-    resume_flag: "--resume"
     session_id_flag: "--session-id"
     system_prompt_flag: "--append-system-prompt"
     session_prefix: "claude-"

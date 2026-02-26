@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # _agent-session-picker-preview — Preview helper for fzf picker
-# Shows tmux pane capture for live sessions, summary for dead sessions
 
 set -euo pipefail
 
@@ -12,22 +11,7 @@ source "$LIB_DIR/state.sh"
 uuid="${1:-}"
 [[ -n "$uuid" ]] || exit 0
 
-state="$(state_read_session "$uuid" "state" 2>/dev/null || echo "")"
-
-if [[ "$state" == "dead" ]]; then
-    # Show summary and meta for dead sessions
-    echo "=== Dead Session ==="
-    echo ""
-    if [[ -f "$SESSIONS_DIR/$uuid/summary" ]]; then
-        cat "$SESSIONS_DIR/$uuid/summary"
-        echo ""
-    fi
-    echo "--- Meta ---"
-    cat "$SESSIONS_DIR/$uuid/meta" 2>/dev/null || echo "(no meta)"
-else
-    # Show tmux pane capture for live sessions
-    session_name="$(state_get_name "$uuid")"
-    if [[ -n "$session_name" ]]; then
-        tmux capture-pane -t "$session_name" -p 2>/dev/null | tail -20
-    fi
+session_name="$(state_get_name "$uuid")"
+if [[ -n "$session_name" ]]; then
+    tmux capture-pane -t "$session_name" -p 2>/dev/null | tail -20
 fi

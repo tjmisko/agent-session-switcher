@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# agent-session-picker-rofi — Rofi-based session picker (UUID-keyed, with dead session support)
+# agent-session-picker-rofi — Rofi-based session picker (UUID-keyed)
 
 set -euo pipefail
 
@@ -74,35 +74,6 @@ _build_session_list_rofi() {
         printf '%s <span color="%s">%-20s %-8s %-8s</span> %s <span size="0">%s</span>\n' \
             "$indicator" "$color" "$name" "$state" "$duration_str" "$cwd" "$uuid"
     done
-
-    # --- Dead / resumable sessions ---
-    for uuid in $(state_list_dead_sessions); do
-        local agent summary_text dead_since cwd
-
-        agent="$(state_read_session "$uuid" "agent" 2>/dev/null || echo "?")"
-        dead_since="$(state_read_session "$uuid" "dead_since" 2>/dev/null || echo "")"
-        cwd="$(state_read_session "$uuid" "cwd" 2>/dev/null || echo "")"
-        cwd="${cwd/#$HOME/\~}"
-
-        summary_text=""
-        if [[ -f "$SESSIONS_DIR/$uuid/summary" ]]; then
-            summary_text="$(grep '^SUMMARY:' "$SESSIONS_DIR/$uuid/summary" 2>/dev/null | cut -d: -f2- | xargs || echo "")"
-        fi
-
-        local duration_str=""
-        if [[ -n "$dead_since" ]]; then
-            local elapsed=$(( now - dead_since ))
-            duration_str="dead $(_format_duration "$elapsed")"
-        else
-            duration_str="dead"
-        fi
-
-        local display="${agent}(dead)"
-        [[ -z "$summary_text" ]] || display="${display}: ${summary_text}"
-
-        printf '  <span color="#666666">%-20s %-8s %-8s %s</span> <span size="0">%s</span>\n' \
-            "$display" "$agent" "$duration_str" "$cwd" "$uuid"
-    done
 }
 
 _strip_pango() {
@@ -119,7 +90,7 @@ while true; do
     selection="$(_build_session_list_rofi | rofi -dmenu \
         -markup-rows \
         -p "agent" \
-        -mesg "enter:attach/resume  ctrl+n:new  ctrl+x:kill/dismiss" \
+        -mesg "enter:attach  ctrl+n:new  ctrl+x:kill" \
         -kb-row-down "Down" \
         -kb-custom-1 "Control+n" \
         -kb-custom-2 "Control+x" \
@@ -129,25 +100,13 @@ while true; do
 
     case "$rc" in
         0)
-            # Enter — attach to live or resume dead
+            # Enter — attach to live session
             uuid="$(echo "$selection" | _extract_uuid)"
             if [[ -n "$uuid" ]]; then
-                local_state="$(state_read_session "$uuid" "state" 2>/dev/null || echo "")"
-
-                if [[ "$local_state" == "dead" ]]; then
-                    # Resume
-                    new_name="$("$SCRIPT_DIR/agent-session-create" --resume "$uuid")" || true
-                    if [[ -n "$new_name" ]]; then
-                        "$SCRIPT_DIR/agent-session-overlay" "$new_name" &
-                        disown
-                    fi
-                else
-                    # Attach
-                    session_name="$(state_get_name "$uuid")"
-                    if [[ -n "$session_name" ]]; then
-                        "$SCRIPT_DIR/agent-session-overlay" "$session_name" &
-                        disown
-                    fi
+                session_name="$(state_get_name "$uuid")"
+                if [[ -n "$session_name" ]]; then
+                    "$SCRIPT_DIR/agent-session-overlay" "$session_name" &
+                    disown
                 fi
             fi
             exit 0
@@ -167,21 +126,13 @@ while true; do
             # ctrl+x — kill live or dismiss dead, re-open picker
             uuid="$(echo "$selection" | _extract_uuid)"
             if [[ -n "$uuid" ]]; then
-                local_state="$(state_read_session "$uuid" "state" 2>/dev/null || echo "")"
-
-                if [[ "$local_state" == "dead" ]]; then
-                    # Dismiss: delete state dir
-                    state_remove_session "$uuid"
-                else
-                    # Kill live session
-                    session_name="$(state_get_name "$uuid")"
-                    if [[ -n "$session_name" ]]; then
-                        tmux kill-session -t "$session_name" 2>/dev/null || true
-                    fi
+                session_name="$(state_get_name "$uuid")"
+                if [[ -n "$session_name" ]]; then
+                    tmux kill-session -t "$session_name" 2>/dev/null || true
                 fi
             fi
             # If no sessions remain, exit
-            if [[ -z "$(state_list_sessions)" && -z "$(state_list_dead_sessions)" ]]; then
+            if [[ -z "$(state_list_sessions)" ]]; then
                 exit 0
             fi
             continue

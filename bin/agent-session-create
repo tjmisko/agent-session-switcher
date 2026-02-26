@@ -19,17 +19,12 @@ source "$LIB_DIR/state.sh"
 state_init
 
 # Parse args
-resume_uuid=""
 agent=""
 cwd=""
 name=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --resume)
-            resume_uuid="$2"
-            shift 2
-            ;;
         *)
             # Positional args: agent, cwd, name
             if [[ -z "$agent" ]]; then
@@ -52,7 +47,6 @@ command="$(config_get_agent "$agent" "command")"
 prefix="$(config_get_agent "$agent" "session_prefix")"
 session_id_flag="$(config_get_agent "$agent" "session_id_flag")"
 system_prompt_flag="$(config_get_agent "$agent" "system_prompt_flag")"
-resume_flag="$(config_get_agent "$agent" "resume_flag")"
 has_hooks="$(config_get_agent "$agent" "hooks")"
 
 # Generate session name if not provided
@@ -74,33 +68,7 @@ mkdir -p "$agent_state_dir"
 # Build command args
 cmd_args=("$command")
 
-# Handle resume mode
-if [[ -n "$resume_uuid" ]]; then
-    resume_id="$(state_read_session "$resume_uuid" "resume_id" 2>/dev/null || echo "")"
-    if [[ -n "$resume_id" && -n "$resume_flag" ]]; then
-        cmd_args+=($resume_flag "$resume_id")
-    fi
-
-    # Inherit fields from old session
-    old_agent="$(state_read_session "$resume_uuid" "agent" 2>/dev/null || echo "$agent")"
-    old_workspace="$(state_read_session "$resume_uuid" "workspace" 2>/dev/null || echo "")"
-    old_cwd="$(state_read_session "$resume_uuid" "cwd" 2>/dev/null || echo "")"
-    agent="$old_agent"
-    [[ -z "$old_cwd" ]] || cwd="$old_cwd"
-
-    # Copy summary if it exists
-    if [[ -f "$SESSIONS_DIR/$resume_uuid/summary" ]]; then
-        cp "$SESSIONS_DIR/$resume_uuid/summary" "$agent_state_dir/summary"
-    fi
-
-    # Remove old state dir
-    state_remove_session "$resume_uuid"
-
-    # Write inherited fields
-    if [[ -n "$old_workspace" ]]; then
-        state_write_session "$uuid" "workspace" "$old_workspace"
-    fi
-elif [[ -n "$session_id_flag" ]]; then
+if [[ -n "$session_id_flag" ]]; then
     cmd_args+=($session_id_flag "$uuid")
 fi
 

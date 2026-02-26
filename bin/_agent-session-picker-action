@@ -16,16 +16,9 @@ uuid="${2:-}"
 
 case "$action" in
     kill)
-        state="$(state_read_session "$uuid" "state" 2>/dev/null || echo "")"
-        if [[ "$state" == "dead" ]]; then
-            # Dismiss: delete state dir entirely
-            state_remove_session "$uuid"
-        else
-            # Live: kill tmux session (cleanup hook will mark dead)
-            session_name="$(state_get_name "$uuid")"
-            if [[ -n "$session_name" ]]; then
-                tmux kill-session -t "$session_name" 2>/dev/null || true
-            fi
+        session_name="$(state_get_name "$uuid")"
+        if [[ -n "$session_name" ]]; then
+            tmux kill-session -t "$session_name" 2>/dev/null || true
         fi
         ;;
 esac

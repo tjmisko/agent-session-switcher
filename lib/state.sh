@@ -2,7 +2,6 @@
 # state.sh — UUID-keyed state helpers
 # tmux is the single source of truth for session liveness.
 # State is stored at $SESSIONS_DIR/<uuid>/meta (key=value).
-# Dead sessions are preserved for resume support.
 
 set -euo pipefail
 
@@ -252,37 +251,6 @@ state_list_sessions() {
         [[ -n "$uuid" ]] || continue
         echo "$uuid"
     done <<< "$live_pairs"
-}
-
-state_list_dead_sessions() {
-    state_init
-
-    # Get live UUIDs for exclusion
-    local -A live_uuids=()
-    local pair
-    while IFS= read -r pair; do
-        [[ -n "$pair" ]] || continue
-        local uuid="${pair%%|*}"
-        live_uuids["$uuid"]=1
-    done < <(_tmux_agent_sessions)
-
-    # Scan state dirs for dead sessions
-    if [[ -d "$SESSIONS_DIR" ]]; then
-        local dir
-        for dir in "$SESSIONS_DIR"/*/; do
-            [[ -d "$dir" ]] || continue
-            local dir_uuid
-            dir_uuid="$(basename "$dir")"
-            # Skip live sessions
-            [[ -z "${live_uuids[$dir_uuid]+x}" ]] || continue
-            # Return if dead or orphaned
-            local state
-            state="$(state_read_session "$dir_uuid" "state" 2>/dev/null || echo "")"
-            if [[ "$state" == "dead" || -z "$state" ]]; then
-                echo "$dir_uuid"
-            fi
-        done
-    fi
 }
 
 # --- Helpers ---
