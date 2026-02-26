@@ -3,8 +3,12 @@
 
 set -euo pipefail
 
-exec 2>/tmp/agent-session-overlay.log
-set -x
+source "$(dirname "$(readlink -f "$0")")/../lib/log.sh"
+log_init
+if [[ -n "${DEBUG:-}" ]]; then
+    exec 2>>"$LOG_DIR/debug-agent-session-overlay.log"
+    set -x
+fi
 
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"

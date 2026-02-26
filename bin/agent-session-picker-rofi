@@ -3,8 +3,12 @@
 
 set -euo pipefail
 
-exec 2>/tmp/agent-session-picker-rofi.log
-set -x
+source "$(dirname "$(readlink -f "$0")")/../lib/log.sh"
+log_init
+if [[ -n "${DEBUG:-}" ]]; then
+    exec 2>>"$LOG_DIR/debug-agent-session-picker-rofi.log"
+    set -x
+fi
 
 # Ensure full user PATH (needed when launched from WM keybind without shell profile)
 [[ -f "$HOME/.profile" ]] && source "$HOME/.profile" 2>/dev/null || true
