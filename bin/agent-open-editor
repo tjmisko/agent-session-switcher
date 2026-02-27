@@ -32,8 +32,8 @@ cwd="$(state_get_cwd "$session_name")"
 editor="$(config_get_default "defaults.editor" "nvim")"
 terminal="$(config_get_default "defaults.terminal" "wezterm")"
 
-# Unfullscreen the overlay window
-hyprctl dispatch fullscreen 0 2>/dev/null || true
+# Unfullscreen the agent terminal
+hyprctl dispatch fullscreen 0,class:agentTerminal 2>/dev/null || true
 
 # Open editor in a new terminal window
 case "$terminal" in

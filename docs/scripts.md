@@ -2,33 +2,44 @@
 
 ## User-Facing Scripts (`bin/`)
 
+### `agent-session-terminal`
+Wrapper process that runs inside the single `agentTerminal` window. Loops between the fzf picker (floating) and tmux attach (fullscreen).
+
+1. Writes TTY and PID to state dir for external control
+2. Enters AI mode (starts bottom waybar HUD)
+3. Shows fzf picker — blocks until selection or ESC
+4. On select: goes fullscreen, attaches tmux session (blocks until detach)
+5. On detach: unfullscreens, loops back to picker
+6. ESC exits the loop, cleans up state, exits AI mode
+
+### `agent-session-toggle`
+Mod+A handler. 4-state toggle for the `agentTerminal` window:
+
+1. **No terminal** — spawns `agent-session-terminal` in a floating wezterm window
+2. **Fullscreen (in session)** — detaches tmux client via TTY, unfullscreens
+3. **Floating (picker visible)** — hides to Hyprland special workspace
+4. **On special workspace** — brings back, triggers fzf reload via `--listen` HTTP POST
+
 ### `agent-session-picker`
-FZF-based interactive session picker. Launched via keybinding in a floating terminal.
+FZF-based interactive session picker.
 
 - Color-coded: yellow=working, green=idle (<10min), red=idle (>10min)
 - Active session marked with `▸`
 - Shows: session name, state, idle duration, CWD
 - FZF preview: last 20 lines of session output
-- Keybinds: `enter`=attach, `ctrl-n`=create, `ctrl-x`=kill, `ctrl-r`=rename
-- Auto-creates first session if none exist
-- On select: spawns `agent-session-overlay` in background
+- Keybinds: `enter`=attach, `ctrl-n`=create+reload, `ctrl-x`=kill, `ctrl-r`=rename
+
+Flags:
+- `--list` — print session list (for fzf reload)
+- `--select` — run picker, print selected UUID to stdout (used by `agent-session-terminal`)
+- `--fzf-listen PORT` — enable fzf's `--listen` on the given port
 
 ### `agent-session-picker-rofi`
 Rofi-based alternative picker. Faster rendering, no preview pane.
 
 - Same color coding via Pango/HTML markup
 - Loop-based UI with `ctrl+n` (new), `ctrl+x` (kill), `ESC` (cancel)
-- Auto-creates first session on empty state
-- Debug logging to `/tmp/agent-session-picker-rofi.log`
-
-### `agent-session-overlay`
-Opens a session fullscreen on the current workspace.
-
-1. Updates active session state
-2. Retrieves or auto-assigns workspace from Hyprland
-3. Enters AI mode (starts bottom waybar HUD)
-4. Spawns terminal with `tmux attach-session -t <name>`
-5. Window class `agent-session-overlay` triggers WM fullscreen rule
+- Switches tmux session via `tmux switch-client` to the wrapper's TTY
 
 ### `agent-session-create`
 Creates a new agent session.
@@ -40,7 +51,7 @@ Creates a new agent session.
 - Creates tmux session, registers cleanup hook
 - Writes initial state, sets as active
 
-Usage: `agent-session-create [--resume UUID] [agent] [cwd] [name]`
+Usage: `agent-session-create [agent] [cwd] [name]`
 
 ### `agent-session-queue`
 Priority queue view showing sessions sorted by state → priority → idle time.
@@ -51,17 +62,17 @@ Priority queue view showing sessions sorted by state → priority → idle time.
 - Launched in floating terminal via keybinding
 
 ### `agent-session-cycle`
-Cycles through sessions (up/down). Updates active session, jumps to workspace, refreshes waybar.
+Cycles through sessions (up/down). Switches tmux session in-place via `tmux switch-client` — the terminal stays fullscreen, no detach/reattach.
 
 Usage: `agent-session-cycle up|down`
 
 ### `agent-session-jump`
-Jumps to the active session's workspace via `hyprctl dispatch workspace`.
+Focuses the `agentTerminal` window via `hyprctl dispatch focuswindow`.
 
 ### `agent-open-editor`
 Opens editor in the active session's CWD.
 
-1. Unfullscreens the overlay window
+1. Unfullscreens the `agentTerminal` window (by class)
 2. Gets CWD from tmux
 3. Spawns editor in new terminal at that CWD
 4. Both windows tile side-by-side

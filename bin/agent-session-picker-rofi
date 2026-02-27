@@ -100,24 +100,35 @@ while true; do
 
     case "$rc" in
         0)
-            # Enter — attach to live session
+            # Enter — switch to session in wrapper terminal
             uuid="$(echo "$selection" | _extract_uuid)"
             if [[ -n "$uuid" ]]; then
                 session_name="$(state_get_name "$uuid")"
                 if [[ -n "$session_name" ]]; then
-                    "$SCRIPT_DIR/agent-session-overlay" "$session_name" &
-                    disown
+                    agent_tty="$(cat "$STATE_DIR/agent-tty" 2>/dev/null || echo "")"
+                    if [[ -n "$agent_tty" ]]; then
+                        tmux switch-client -c "$agent_tty" -t "$session_name"
+                    else
+                        # No wrapper running — spawn one
+                        wezterm start --class agentTerminal -- "$SCRIPT_DIR/agent-session-terminal" &
+                        disown
+                    fi
                 fi
             fi
             exit 0
             ;;
         10)
-            # ctrl+n — create new session and attach
+            # ctrl+n — create new session and switch to it
             tmux start-server 2>/dev/null || true
             new_session="$("$SCRIPT_DIR/agent-session-create")" || true
             if [[ -n "$new_session" ]]; then
-                "$SCRIPT_DIR/agent-session-overlay" "$new_session" &
-                disown
+                agent_tty="$(cat "$STATE_DIR/agent-tty" 2>/dev/null || echo "")"
+                if [[ -n "$agent_tty" ]]; then
+                    tmux switch-client -c "$agent_tty" -t "$new_session"
+                else
+                    wezterm start --class agentTerminal -- "$SCRIPT_DIR/agent-session-terminal" &
+                    disown
+                fi
                 exit 0
             fi
             continue

@@ -78,36 +78,61 @@ _extract_uuid() {
 }
 
 _pick_session() {
+    local fzf_args=(
+        --ansi
+        --no-sort
+        --prompt="agent> "
+        --header="enter:attach  ctrl-n:new  ctrl-x:kill  ctrl-r:rename"
+        --bind="ctrl-n:execute-silent($SCRIPT_DIR/agent-session-create)+reload($SCRIPT_DIR/agent-session-picker --list)"
+        --bind="ctrl-x:execute-silent($SCRIPT_DIR/_agent-session-picker-action kill {-1})+reload($SCRIPT_DIR/agent-session-picker --list)"
+        --bind="ctrl-r:execute-silent($SCRIPT_DIR/_agent-session-rename {2} {q})+reload($SCRIPT_DIR/agent-session-picker --list)"
+        --preview="$SCRIPT_DIR/_agent-session-picker-preview {-1}"
+        --preview-window=up:60%
+    )
+
+    if [[ -n "${FZF_LISTEN_PORT:-}" ]]; then
+        fzf_args+=(--listen "$FZF_LISTEN_PORT")
+    fi
+
     local selection
-    selection="$(_build_session_list | fzf \
-        --ansi \
-        --no-sort \
-        --prompt="agent> " \
-        --header="enter:attach  ctrl-n:new  ctrl-x:kill  ctrl-r:rename" \
-        --bind="ctrl-n:execute-silent($SCRIPT_DIR/agent-session-create --open)+abort" \
-        --bind="ctrl-x:execute-silent($SCRIPT_DIR/_agent-session-picker-action kill {-1})+reload($SCRIPT_DIR/agent-session-picker --list)" \
-        --bind="ctrl-r:execute-silent($SCRIPT_DIR/_agent-session-rename {2} {q})+reload($SCRIPT_DIR/agent-session-picker --list)" \
-        --preview="$SCRIPT_DIR/_agent-session-picker-preview {-1}" \
-        --preview-window=up:60% \
-    )"
+    selection="$(_build_session_list | fzf "${fzf_args[@]}")"
 
     if [[ -n "$selection" ]]; then
         echo "$selection" | _extract_uuid
     fi
 }
 
-# Handle --list flag for fzf reload
-if [[ "${1:-}" == "--list" ]]; then
-    _build_session_list
+# Parse flags
+mode="default"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --list)
+            _build_session_list
+            exit 0
+            ;;
+        --select)
+            mode="select"
+            shift
+            ;;
+        --fzf-listen)
+            FZF_LISTEN_PORT="$2"
+            shift 2
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+selected_uuid="$(_pick_session)" || true
+
+if [[ "$mode" == "select" ]]; then
+    # --select: print UUID to stdout, caller handles attachment
+    echo "$selected_uuid"
     exit 0
 fi
 
-selected_uuid="$(_pick_session)"
-
+# Default mode: print UUID to stdout (same as --select)
 if [[ -n "$selected_uuid" ]]; then
-    session_name="$(state_get_name "$selected_uuid")"
-    if [[ -n "$session_name" ]]; then
-        "$SCRIPT_DIR/agent-session-overlay" "$session_name" &
-        disown
-    fi
+    echo "$selected_uuid"
 fi

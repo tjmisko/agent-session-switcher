@@ -12,19 +12,19 @@ Add to your `~/.config/hypr/hyprland.conf`:
 # Agent Session Switcher — example keybindings
 # Adjust $mainMod and keys to your preference
 
-# Primary picker (configured in config.yaml under defaults.picker)
-bind = $mainMod, A, exec, ~/.config/scripts/hypr-float-center 50 --class agentPicker agent-session-picker
+# Session toggle (spawn / detach / hide / show)
+bind = $mainMod, A, exec, agent-session-toggle
 
-# Rofi picker (alternative to fzf picker above)
+# Rofi picker (alternative to fzf)
 bind = $mainMod SHIFT, A, exec, agent-session-picker-rofi
 
 # Open editor in session CWD
 bind = $mainMod, E, exec, agent-open-editor
 
-# Jump to active session workspace
+# Focus agent terminal
 bind = $mainMod, F4, exec, agent-session-jump
 
-# Cycle sessions
+# Cycle sessions (switches tmux session in-place)
 bind = $mainMod, Up, exec, agent-session-cycle up
 bind = $mainMod, Down, exec, agent-session-cycle down
 
@@ -32,8 +32,7 @@ bind = $mainMod, Down, exec, agent-session-cycle down
 bind = $mainMod SHIFT, Q, exec, ~/.config/scripts/hypr-float-center 70 --class agentQueue agent-session-queue
 
 # Window rules
-windowrulev2 = fullscreen, class:^(agent-session-overlay)$
-windowrulev2 = float, class:^(agentPicker)$
+windowrulev2 = float, class:^(agentTerminal)$
 windowrulev2 = float, class:^(agentQueue)$
 ```
 

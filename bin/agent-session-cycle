@@ -44,10 +44,11 @@ fi
 next_uuid="${uuids[$next_idx]}"
 state_set_active "$next_uuid"
 
-# Jump to workspace
-workspace="$(state_read_session "$next_uuid" "workspace" 2>/dev/null || echo "")"
-if [[ -n "$workspace" ]]; then
-    hyprctl dispatch workspace "$workspace" 2>/dev/null || true
+# Switch tmux session in-place (no detach/reattach)
+next_name="$(state_get_name "$next_uuid")"
+agent_tty="$(cat "$STATE_DIR/agent-tty" 2>/dev/null || echo "")"
+if [[ -n "$next_name" && -n "$agent_tty" ]]; then
+    tmux switch-client -c "$agent_tty" -t "$next_name"
 fi
 
 # Refresh waybar

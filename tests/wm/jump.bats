@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# jump.bats — Story 3: jump to active session workspace
+# jump.bats — Focus agentTerminal window
 # Requires Hyprland compositor.
 
 setup() {
@@ -13,52 +13,28 @@ setup() {
 }
 
 teardown() {
-    close_window_by_class "agent-session-overlay"
+    close_agent_terminal
     teardown_common
 }
 
-@test "[WM] should jump to session workspace from different workspace" {
+@test "[WM] should focus agentTerminal window" {
     local name
     name="$("$PROJECT_ROOT/bin/agent-session-create")"
-    local uuid
-    uuid="$(tmux show-option -t "$name" -v @agent_uuid)"
 
-    # Attach overlay (records workspace)
-    hyprctl dispatch exec "$PROJECT_ROOT/bin/agent-session-overlay $name"
-    wait_for_window "agent-session-overlay" 10
-    sleep 1
+    # Spawn terminal
+    "$PROJECT_ROOT/bin/agent-session-toggle"
+    wait_for_window "agentTerminal" 10
 
-    local session_workspace
-    session_workspace="$(state_read_session "$uuid" "workspace")"
-
-    # Switch to workspace 1
+    # Switch to another workspace
     hyprctl dispatch workspace 1
     sleep 0.5
-    assert_workspace "1"
 
-    # Jump should switch back
-    hyprctl dispatch exec "$PROJECT_ROOT/bin/agent-session-jump"
-    sleep 1
-
-    assert_workspace "$session_workspace"
-}
-
-@test "[WM] should stay on same workspace if already there" {
-    local name
-    name="$("$PROJECT_ROOT/bin/agent-session-create")"
-    local uuid
-    uuid="$(tmux show-option -t "$name" -v @agent_uuid)"
-
-    hyprctl dispatch exec "$PROJECT_ROOT/bin/agent-session-overlay $name"
-    wait_for_window "agent-session-overlay" 10
-    sleep 1
-
-    local session_workspace
-    session_workspace="$(state_read_session "$uuid" "workspace")"
-
-    # Already on session workspace — jump should be a no-op
-    hyprctl dispatch exec "$PROJECT_ROOT/bin/agent-session-jump"
+    # Jump should focus the terminal
+    "$PROJECT_ROOT/bin/agent-session-jump"
     sleep 0.5
 
-    assert_workspace "$session_workspace"
+    # Terminal should be focused
+    local focused_class
+    focused_class="$(hyprctl activewindow -j | jq -r '.class')"
+    [[ "$focused_class" == "agentTerminal" ]]
 }

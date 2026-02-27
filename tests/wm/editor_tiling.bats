@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# editor_tiling.bats — Story 2: editor tiles beside overlay
+# editor_tiling.bats — Editor tiles beside agentTerminal
 # Requires Hyprland compositor.
 
 setup() {
@@ -13,38 +13,40 @@ setup() {
 }
 
 teardown() {
-    close_window_by_class "agent-session-overlay"
+    close_agent_terminal
     teardown_common
 }
 
-@test "[WM] should unfullscreen overlay when editor opens" {
+@test "[WM] should unfullscreen agentTerminal when editor opens" {
     local name
     name="$("$PROJECT_ROOT/bin/agent-session-create")"
-    local uuid
-    uuid="$(tmux show-option -t "$name" -v @agent_uuid)"
 
-    # Start overlay fullscreen
-    hyprctl dispatch exec "$PROJECT_ROOT/bin/agent-session-overlay $name"
-    wait_for_window "agent-session-overlay" 10
-    assert_window_fullscreen "agent-session-overlay"
+    # Spawn and wait for terminal
+    "$PROJECT_ROOT/bin/agent-session-toggle"
+    wait_for_window "agentTerminal" 10
+
+    # Fullscreen it manually (simulates being in a session)
+    hyprctl dispatch fullscreen 1
+    sleep 0.5
+    assert_window_fullscreen "agentTerminal"
 
     # Open editor
     hyprctl dispatch exec "$PROJECT_ROOT/bin/agent-open-editor"
     sleep 2
 
-    # Overlay should no longer be fullscreen
-    assert_window_not_fullscreen "agent-session-overlay"
+    # agentTerminal should no longer be fullscreen
+    assert_window_not_fullscreen "agentTerminal"
 }
 
 @test "[WM] should have two windows on same workspace after editor opens" {
     local name
     name="$("$PROJECT_ROOT/bin/agent-session-create")"
 
-    hyprctl dispatch exec "$PROJECT_ROOT/bin/agent-session-overlay $name"
-    wait_for_window "agent-session-overlay" 10
+    "$PROJECT_ROOT/bin/agent-session-toggle"
+    wait_for_window "agentTerminal" 10
 
     local workspace
-    workspace="$(get_workspace_of_window "agent-session-overlay")"
+    workspace="$(get_workspace_of_window "agentTerminal")"
 
     hyprctl dispatch exec "$PROJECT_ROOT/bin/agent-open-editor"
     sleep 2
@@ -63,14 +65,12 @@ teardown() {
     local uuid
     uuid="$(tmux show-option -t "$name" -v @agent_uuid)"
 
-    hyprctl dispatch exec "$PROJECT_ROOT/bin/agent-session-overlay $name"
-    wait_for_window "agent-session-overlay" 10
+    "$PROJECT_ROOT/bin/agent-session-toggle"
+    wait_for_window "agentTerminal" 10
 
     hyprctl dispatch exec "$PROJECT_ROOT/bin/agent-open-editor"
     sleep 2
 
-    # CWD verification: the editor should have been launched in tmpdir
-    # This is hard to verify in a WM test, so we check state instead
     local cwd
     cwd="$(state_get_cwd "$name")"
     [[ "$cwd" == "$tmpdir" ]]

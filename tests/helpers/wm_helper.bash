@@ -122,3 +122,7 @@ get_workspace_of_window() {
     local class="$1"
     hyprctl clients -j | jq -r ".[] | select(.class == \"$class\") | .workspace.id"
 }
+
+close_agent_terminal() {
+    close_window_by_class "agentTerminal"
+}

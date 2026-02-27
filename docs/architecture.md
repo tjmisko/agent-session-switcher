@@ -82,11 +82,21 @@ agent-session-create --resume $uuid
   → copies summary, inherits workspace and cwd from old session
   → deletes old session's state dir
 
-agent-session-overlay (on picker select)
-  → updates active session
-  → assigns workspace
+agent-session-terminal (picker → select → fullscreen attach loop)
+  → writes TTY and PID for external control
   → enters AI mode (starts waybar HUD)
-  → spawns overlay terminal attached to tmux session
+  → loops: unfullscreen → fzf picker → select → fullscreen + tmux attach
+  → ESC exits loop, cleans up, exits AI mode
+
+agent-session-toggle (Mod+A handler)
+  → no terminal: spawn agentTerminal with wrapper
+  → fullscreen (in session): detach tmux client via TTY + unfullscreen
+  → floating (picker visible): hide to special workspace
+  → on special workspace: bring back + reload fzf via --listen
+
+agent-session-cycle (Mod+Up/Down)
+  → switches tmux session in-place via tmux switch-client
+  → terminal stays fullscreen, no detach/reattach
 
 _agent-session-cleanup $uuid (tmux hook on session close)
   → marks state=dead, writes dead_since timestamp

@@ -1,27 +1,6 @@
 #!/usr/bin/env bash
-# agent-session-jump — Jump to the active session's workspace (UUID-keyed)
+# agent-session-jump — Focus the agentTerminal window
 
 set -euo pipefail
 
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
-
-source "$LIB_DIR/state.sh"
-
-state_init
-
-active_uuid="$(state_get_active)"
-
-if [[ -z "$active_uuid" ]]; then
-    echo "No active session" >&2
-    exit 1
-fi
-
-workspace="$(state_read_session "$active_uuid" "workspace" 2>/dev/null || echo "")"
-
-if [[ -z "$workspace" ]]; then
-    echo "No workspace set for active session" >&2
-    exit 1
-fi
-
-hyprctl dispatch workspace "$workspace" 2>/dev/null || true
+hyprctl dispatch focuswindow "class:agentTerminal" 2>/dev/null || true

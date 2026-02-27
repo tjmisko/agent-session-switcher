@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# agent-session-toggle — Spawn, detach, hide, or show the agent terminal
+# Mod+A handler: 4-state toggle for the single agentTerminal window.
+
+set -euo pipefail
+
+source "$(dirname "$(readlink -f "$0")")/../lib/log.sh"
+log_init
+if [[ -n "${DEBUG:-}" ]]; then
+    exec 2>>"$LOG_DIR/debug-agent-session-toggle.log"
+    set -x
+fi
+
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
+
+source "$LIB_DIR/state.sh"
+
+state_init
+
+window_json=$(hyprctl clients -j | jq -c '.[] | select(.class == "agentTerminal")') || true
+
+if [[ -z "$window_json" ]]; then
+    # State 1: no terminal — spawn
+    wezterm start --class agentTerminal -- "$SCRIPT_DIR/agent-session-terminal" &
+    disown
+    exit 0
+fi
+
+fullscreen=$(echo "$window_json" | jq -r '.fullscreen')
+workspace_name=$(echo "$window_json" | jq -r '.workspace.name')
+
+if [[ "$fullscreen" == "1" || "$fullscreen" == "true" ]]; then
+    # State 2: in session (fullscreen) — detach + unfullscreen
+    hyprctl dispatch fullscreen 0 2>/dev/null || true
+    tmux detach-client -t "$(cat "$STATE_DIR/agent-tty" 2>/dev/null)" 2>/dev/null || true
+elif [[ "$workspace_name" == special* ]]; then
+    # State 4: hidden on special workspace — bring back + reload fzf
+    hyprctl dispatch togglespecialworkspace agent 2>/dev/null || true
+    curl -s -XPOST "localhost:7733" \
+        -d "reload($SCRIPT_DIR/agent-session-picker --list)" 2>/dev/null || true
+else
+    # State 3: picker visible (floating) — hide to special workspace
+    hyprctl dispatch movetoworkspacesilent special:agent 2>/dev/null || true
+fi

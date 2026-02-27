@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# agent-session-terminal — Picker + session attachment loop
+# Runs inside the single agentTerminal window. Loops between
+# fzf picker (floating) and tmux attach (fullscreen).
+
+set -euo pipefail
+
+source "$(dirname "$(readlink -f "$0")")/../lib/log.sh"
+log_init
+if [[ -n "${DEBUG:-}" ]]; then
+    exec 2>>"$LOG_DIR/debug-agent-session-terminal.log"
+    set -x
+fi
+
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
+
+source "$LIB_DIR/state.sh"
+
+state_init
+
+# Write TTY and PID for external control
+echo "$(tty)" > "$STATE_DIR/agent-tty"
+echo "$$" > "$STATE_DIR/terminal-pid"
+
+# Enter AI mode (starts waybar HUD)
+"$SCRIPT_DIR/agent-mode-toggle" enter
+
+FZF_PORT=7733  # for --listen reload
+
+while true; do
+    # Unfullscreen (idempotent, handles return from session)
+    hyprctl dispatch fullscreen 0 2>/dev/null || true
+
+    # Show picker — blocks until selection or ESC
+    selected_uuid=$("$SCRIPT_DIR/agent-session-picker" --select \
+        --fzf-listen "$FZF_PORT") || true
+
+    if [[ -z "$selected_uuid" ]]; then
+        break  # ESC = exit wrapper, terminal closes
+    fi
+
+    session_name=$(state_get_name "$selected_uuid")
+    state_set_active "$selected_uuid"
+
+    # Go fullscreen and attach (blocks until detach)
+    hyprctl dispatch fullscreen 1 2>/dev/null || true
+    tmux attach-session -t "$session_name" || true
+
+    # After detach: wrapper continues loop → unfullscreen → picker
+done
+
+# Cleanup
+rm -f "$STATE_DIR/agent-tty" "$STATE_DIR/terminal-pid"
+"$SCRIPT_DIR/agent-mode-toggle" exit

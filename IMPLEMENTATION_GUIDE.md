@@ -24,12 +24,13 @@ tmux AI sessions are first-class citizens managed at the compositor level, with 
 ```
 agent-session-switcher/
 ├── bin/                            # Core scripts (add to PATH)
-│   ├── agent-session-picker        # FZF session picker (live + dead sections)
-│   ├── agent-session-picker-rofi   # Rofi session picker (live + dead sections)
-│   ├── agent-session-overlay       # Fullscreen session attachment
+│   ├── agent-session-terminal      # Wrapper: picker + session attach loop (runs in agentTerminal)
+│   ├── agent-session-toggle        # Mod+A handler: spawn/detach/hide/show
+│   ├── agent-session-picker        # FZF session picker (--select mode for terminal)
+│   ├── agent-session-picker-rofi   # Rofi session picker
 │   ├── agent-session-create        # Create new session (--resume UUID for dead sessions)
-│   ├── agent-session-cycle         # Cycle active session + jump workspace
-│   ├── agent-session-jump          # Jump to active session workspace
+│   ├── agent-session-cycle         # Cycle sessions (tmux switch-client in-place)
+│   ├── agent-session-jump          # Focus agentTerminal window
 │   ├── agent-session-queue         # Priority queue view
 │   ├── agent-mode-toggle           # Spawns/kills bottom waybar
 │   ├── agent-open-editor           # Opens editor in session CWD
@@ -106,12 +107,13 @@ The `@agent_uuid` tmux user option is the link between a live tmux session and i
 ## How It Works (Summary)
 
 1. **Create**: `agent-session-create` spawns a tmux session, assigns a UUID via `@agent_uuid`, registers cleanup hooks, writes state to `$SESSIONS_DIR/<uuid>/meta`
-2. **Pick**: A configurable picker (fzf, rofi) lists live sessions and dead/resumable sessions (dimmed). Enter on live attaches; enter on dead resumes.
-3. **Attach**: `agent-session-overlay` resolves the UUID to a tmux session name, then opens fullscreen; WM window rules handle layout
-4. **Edit**: `agent-open-editor` unfullscreens the overlay and tiles an editor beside it
-5. **Navigate**: `agent-session-cycle` rotates sessions; `agent-session-jump` returns to active workspace
-6. **Monitor**: Bottom waybar HUD shows all sessions with state/timing; hooks update on agent events
-7. **Cleanup**: tmux session-closed hook triggers `_agent-session-cleanup $uuid` which marks `state=dead` (preserves dir for resume)
+2. **Toggle (Mod+A)**: `agent-session-toggle` spawns/detaches/hides/shows a single `agentTerminal` window
+3. **Pick**: `agent-session-terminal` runs inside the terminal, looping between fzf picker (floating) and tmux attach (fullscreen)
+4. **Attach**: Selecting a session fullscreens the terminal and attaches tmux; Mod+A detaches and returns to picker
+5. **Edit**: `agent-open-editor` unfullscreens the `agentTerminal` and tiles an editor beside it
+6. **Navigate**: `agent-session-cycle` switches tmux session in-place (no detach/reattach); `agent-session-jump` focuses the terminal window
+7. **Monitor**: Bottom waybar HUD shows all sessions with state/timing; hooks update on agent events
+8. **Cleanup**: tmux session-closed hook triggers `_agent-session-cleanup $uuid` which marks `state=dead` (preserves dir for resume)
 
 For detailed documentation, see:
 - **[Architecture & State](docs/architecture.md)** — state files, session lifecycle, hooks, design principles
@@ -127,9 +129,10 @@ For detailed documentation, see:
 - `stop` hook captures `session_id` from Claude's JSON payload as `resume_id`
 - Core session lifecycle: create, attach, cleanup, rename, resume
 - FZF and Rofi pickers with live + dead/resumable session sections
-- Fullscreen overlay with WM window rules
+- Single-window terminal with picker + attach loop
+- Mod+A toggle: spawn/detach/hide/show
 - Editor jump with unfullscreen + tiling
-- Session cycling and workspace jumping
+- Session cycling via tmux switch-client (in-place, no detach/reattach)
 - Priority queue view sorted by state/priority/idle time
 - Bottom waybar HUD with Pango markup
 - AI mode toggle (waybar lifecycle)
@@ -160,21 +163,21 @@ For detailed documentation, see:
 ## Verification Checklist
 
 1. Create session → `$SESSIONS_DIR/<uuid>/meta` exists with `state=idle`, `@agent_uuid` set in tmux
-2. Picker → select → fullscreen overlay attached to session
-3. No sessions → auto-creates, bottom bar appears
-4. Rename tmux session externally → state persists, picker shows new name
-5. Kill session → `state=dead` in meta, dir preserved, picker shows dimmed
-6. Select dead session → resumes conversation, new tmux session created
-7. Dismiss dead session (ctrl-x) → state dir deleted
-8. Kill last session → AI mode exits, waybar cleans up
-9. Editor opens tiled beside unfullscreened overlay in correct CWD
-10. Jump returns to active session's workspace
-11. Cycle rotates sessions, workspace follows, bottom bar updates
-12. Queue view sorted by priority + state
-13. Bottom bar: working=orange, idle=green, stale=red, active=bold
-14. Agent writes summary + priority, displayed in queue
-15. Nvim picker + context sending works
-16. New agent in config.yaml works with picker/HUD
+2. Mod+A → spawns floating terminal with fzf picker
+3. Select session → terminal goes fullscreen, tmux attached
+4. Mod+A while fullscreen → detaches, unfullscreens, picker shown
+5. Mod+A while picker visible → hides to special workspace
+6. Mod+A while hidden → brings back, fzf list refreshes
+7. ctrl-n in picker → creates session, list refreshes, new session visible
+8. Mod+Up/Down → switches tmux session in-place (no window change)
+9. Mod+F4 → focuses agentTerminal window
+10. Mod+E → unfullscreens agentTerminal, opens editor beside it
+11. `hyprctl clients -j | jq '.[].class'` → only one `agentTerminal` window ever
+12. Rename tmux session externally → state persists, picker shows new name
+13. Kill session → `state=dead` in meta, dir preserved, picker shows dimmed
+14. Kill last session → AI mode exits, waybar cleans up
+15. Queue view sorted by priority + state
+16. Bottom bar: working=orange, idle=green, stale=red, active=bold
 17. `install.sh` adds to PATH, creates default user config
 
 ## Testing
