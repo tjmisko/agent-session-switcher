@@ -22,12 +22,11 @@ state_init
 agent=""
 cwd=""
 name=""
-open_overlay=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --open)
-            open_overlay=true
+            # Legacy flag, ignored (overlay removed)
             shift
             ;;
         *)
@@ -47,7 +46,6 @@ done
 agent="${agent:-$(config_get_default "defaults.agent" "claude")}"
 cwd="${cwd:-$(pwd)}"
 
-# Read agent config
 command="$(config_get_agent "$agent" "command")"
 prefix="$(config_get_agent "$agent" "session_prefix")"
 session_id_flag="$(config_get_agent "$agent" "session_id_flag")"
@@ -75,14 +73,7 @@ state_write_session "$uuid" "created_at" "$(date +%s)"
 
 log_msg INFO "agent-session-create" "Creating session: name=$name uuid=$uuid agent=$agent"
 
-# Build command args
-cmd_args=("$command")
-
-if [[ -n "$session_id_flag" ]]; then
-    cmd_args+=($session_id_flag "$uuid")
-fi
-
-# Build system prompt additions
+# Build system prompt file
 if [[ -n "$system_prompt_flag" ]]; then
     prompt_additions="$(config_get "system_prompt_additions")"
     priority_rules="$(config_get "priority_rules")"
@@ -91,58 +82,40 @@ if [[ -n "$system_prompt_flag" ]]; then
         full_prompt="AGENT_STATE_DIR=${agent_state_dir}
 ${prompt_additions}
 ${priority_rules}"
-        cmd_args+=($system_prompt_flag "$full_prompt")
+        printf '%s' "$full_prompt" > "$agent_state_dir/system-prompt"
     fi
 fi
 
-# Write launcher script to avoid tmux shell-command quoting issues
-# (tmux joins args with spaces and passes to sh -c, breaking multiline values)
-launcher="$agent_state_dir/launch.sh"
-cat > "$launcher" <<LAUNCHER
-#!/usr/bin/env bash
-set -euo pipefail
-
-source "$LIB_DIR/log.sh"
-log_init
-log_msg INFO "launcher" "Starting session: uuid=$uuid cmd=${cmd_args[0]}"
-log_env "launcher"
-
-# Validate command exists
-if ! command -v ${cmd_args[0]@Q} &>/dev/null; then
-    log_msg ERROR "launcher" "Command not found: ${cmd_args[0]}"
-    echo "ERROR: command not found: ${cmd_args[0]}" >&2
-    sleep 5
-    exit 127
+# Build the command string for send-keys
+run_cmd="$command"
+if [[ -n "$session_id_flag" ]]; then
+    run_cmd+=" $session_id_flag $uuid"
+fi
+if [[ -n "$system_prompt_flag" && -f "$agent_state_dir/system-prompt" ]]; then
+    run_cmd+=" $system_prompt_flag \"\$(cat '$agent_state_dir/system-prompt')\""
 fi
 
-# Check TTY availability
-if [[ ! -t 0 ]] || [[ ! -t 1 ]]; then
-    log_msg WARN "launcher" "No TTY available (stdin=$(test -t 0 && echo yes || echo no), stdout=$(test -t 1 && echo yes || echo no))"
-fi
+# Unset CLAUDECODE to avoid recursion, then exec the agent command
+run_cmd="unset CLAUDECODE; exec $run_cmd"
 
-unset CLAUDECODE
-exec ${cmd_args[*]@Q}
-
-# If exec fails, log and give user a chance to see the error
-log_msg ERROR "launcher" "exec failed for: ${cmd_args[*]}"
-echo "ERROR: failed to exec ${cmd_args[0]}" >&2
-sleep 5
-exit 1
-LAUNCHER
-chmod +x "$launcher"
+log_msg INFO "agent-session-create" "Run command: $run_cmd"
 
 # Ensure tmux server is running
 tmux start-server 2>/dev/null || true
 
-# Create tmux session with hook and options set atomically.
-# Using \; ensures all commands run in a single server round-trip,
-# preventing a race where the session dies before hooks are registered.
-tmux new-session -d -s "$name" -c "$cwd" "$launcher" \; \
+# Create tmux session (interactive shell, no command) with hook and options
+# set atomically. Using \; ensures all commands run in a single server
+# round-trip, preventing a race where the session dies before hooks are
+# registered.
+tmux new-session -d -s "$name" -c "$cwd" \; \
     set-hook -t "$name" session-closed \
         "run-shell '$SCRIPT_DIR/_agent-session-cleanup $uuid'" \; \
     set-option -t "$name" @agent_uuid "$uuid" \; \
     set-environment -t "$name" AGENT_STATE_DIR "$agent_state_dir" \; \
     set-environment -t "$name" -u CLAUDECODE
+
+# Send the command into the interactive shell
+tmux send-keys -t "$name" "$run_cmd" Enter
 
 # Verify session was created
 if ! tmux has-session -t "$name" 2>/dev/null; then
@@ -161,9 +134,3 @@ state_set_active "$uuid"
 log_msg INFO "agent-session-create" "Session created: name=$name uuid=$uuid"
 
 echo "$name"
-
-# If --open was passed, spawn an overlay window
-if [[ "$open_overlay" == true ]]; then
-    "$SCRIPT_DIR/agent-session-overlay" "$name" &
-    disown
-fi
