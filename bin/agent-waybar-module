@@ -23,7 +23,11 @@ for uuid in $(state_list_sessions); do
     idle_since="$(state_read_session "$uuid" "idle_since" 2>/dev/null || echo "")"
 
     # Calculate duration
-    if [[ "$state" == "working" ]]; then
+    if [[ "$state" == "permission" ]]; then
+        has_working=true  # treat as "needs attention"
+        color="#ff6060"   # bright red — needs user input
+        duration_label=""
+    elif [[ "$state" == "working" ]]; then
         has_working=true
         color="#f0a050"  # orange
         duration_label=""

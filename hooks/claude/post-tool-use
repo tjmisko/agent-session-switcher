@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Claude Code hook: post-tool-use — fired after a tool call succeeds
+
+set -euo pipefail
+
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
+LIB_DIR="$PROJECT_ROOT/lib"
+
+source "$LIB_DIR/state.sh"
+
+state_init
+
+# Determine session name and UUID from tmux
+session_name="$(tmux display-message -p '#{session_name}' 2>/dev/null || echo "")"
+
+if [[ -z "$session_name" ]]; then
+    exit 0
+fi
+
+uuid="$(state_find_uuid "$session_name")"
+
+if [[ -z "$uuid" ]]; then
+    exit 0
+fi
+
+# Set state to working (permission was granted, tool executed)
+state_write_session "$uuid" "state" "working"
+state_write_session "$uuid" "idle_since" ""

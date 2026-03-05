@@ -144,4 +144,13 @@ tmux set-option -t "$name" @agent_uuid "$uuid" || true
 tmux set-environment -t "$name" AGENT_STATE_DIR "$agent_state_dir" || true
 tmux set-environment -t "$name" -u CLAUDECODE || true
 
+# Live-updating window title showing agent state + idle timer
+tmux set-option -t "$name" automatic-rename on || true
+tmux set-option -t "$name" automatic-rename-format \
+    "#($SCRIPT_DIR/agent-tmux-title #{@agent_uuid})" || true
+tmux set-option -t "$name" status-interval 1 || true
+
+# Ensure waybar is running now that a session exists
+"$SCRIPT_DIR/agent-mode-toggle" ensure
+
 echo "$name"
