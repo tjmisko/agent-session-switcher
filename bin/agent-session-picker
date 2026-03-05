@@ -138,15 +138,23 @@ if [[ -n "$selected_uuid" ]]; then
         # Resume: create new session from dead one
         new_name="$("$SCRIPT_DIR/agent-session-create" --resume "$selected_uuid")"
         if [[ -n "$new_name" ]]; then
-            "$SCRIPT_DIR/agent-session-overlay" "$new_name" &
-            disown
+            selected_uuid="$(state_find_uuid "$new_name")"
+            session_name="$new_name"
         fi
     else
-        # Live: attach via overlay
         session_name="$(state_get_name "$selected_uuid")"
-        if [[ -n "$session_name" ]]; then
-            "$SCRIPT_DIR/agent-session-overlay" "$session_name" &
-            disown
-        fi
+    fi
+
+    if [[ -n "${session_name:-}" ]]; then
+        # State updates (inlined from agent-session-overlay)
+        state_set_active "$selected_uuid"
+        workspace="$(hyprctl activeworkspace -j 2>/dev/null | jq -r '.id' 2>/dev/null || echo "1")"
+        state_write_session "$selected_uuid" "workspace" "$workspace"
+        "$SCRIPT_DIR/agent-mode-toggle" ensure
+
+        # Remove hypr-float-center state so Super+A spawns a fresh picker next time
+        rm -f /tmp/hypr-float-center/agentPicker.conf
+
+        exec tmux attach-session -t "$session_name"
     fi
 fi

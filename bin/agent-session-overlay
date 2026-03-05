@@ -50,8 +50,8 @@ if [[ -n "$uuid" ]]; then
     fi
 fi
 
-# Ensure AI mode is active
-"$SCRIPT_DIR/agent-mode-toggle" enter
+# Ensure waybar state
+"$SCRIPT_DIR/agent-mode-toggle" ensure
 
 # Spawn overlay terminal — hyprland window rules handle fullscreen
 terminal="$(config_get_default "defaults.terminal" "wezterm")"

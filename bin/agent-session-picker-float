@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Wrapper for the fzf picker that handles the agentPicker window lifecycle.
+#
+# Toggle semantics:
+#   - No agentPicker window → launch fresh picker
+#   - agentPicker is running the fzf picker → close it (toggle off)
+#   - agentPicker has exec'd into tmux → close it and relaunch picker
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Check if an agentPicker window exists and get its PID
+window_pid=$(hyprctl clients -j 2>/dev/null \
+    | jq -r '.[] | select(.class == "agentPicker") | .pid' \
+    | head -1)
+
+if [[ -n "$window_pid" && "$window_pid" != "null" ]]; then
+    # Window exists — check if tmux is a direct child (picker exec'd into a session)
+    if pgrep -P "$window_pid" -x tmux >/dev/null 2>&1; then
+        # Tmux is running — close window and relaunch picker
+        hyprctl dispatch closewindow "class:agentPicker" 2>/dev/null || true
+        rm -f /tmp/hypr-float-center/agentPicker.conf
+        sleep 0.15
+        exec ~/.config/scripts/hypr-float-center 50x60 --terminal wezterm --class agentPicker \
+            "$SCRIPT_DIR/agent-session-picker"
+    else
+        # Picker (fzf) is showing — just close it (toggle off)
+        hyprctl dispatch closewindow "class:agentPicker" 2>/dev/null || true
+        rm -f /tmp/hypr-float-center/agentPicker.conf
+        exit 0
+    fi
+fi
+
+# No window — launch fresh picker
+exec ~/.config/scripts/hypr-float-center 50x60 --terminal wezterm --class agentPicker \
+    "$SCRIPT_DIR/agent-session-picker"
