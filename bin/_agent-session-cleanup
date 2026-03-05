@@ -43,11 +43,10 @@ if [[ "$active" == "$uuid" ]]; then
     fi
 fi
 
-# Refresh waybar
-"$SCRIPT_DIR/agent-mode-toggle" refresh 2>/dev/null || true
-
-# If no live sessions remain, exit AI mode
-remaining="$(state_list_sessions | wc -l)"
-if [[ "$remaining" -eq 0 ]]; then
+# Check remaining live sessions (exclude the one being cleaned up)
+remaining="$(state_list_sessions | grep -cv "^${uuid}$" || true)"
+if [[ "$remaining" -gt 0 ]]; then
+    "$SCRIPT_DIR/agent-mode-toggle" refresh 2>/dev/null || true
+else
     "$SCRIPT_DIR/agent-mode-toggle" exit 2>/dev/null || true
 fi

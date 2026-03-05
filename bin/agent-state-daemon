@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# agent-state-daemon — single-writer daemon for session state
+# Reads commands from a named FIFO, writes state files atomically.
+#
+# Commands (via FIFO):
+#   SET <uuid> <field> <value>   — set field in $SESSIONS_DIR/<uuid>/meta
+#   REMOVE <uuid>                — rm -rf session dir
+#   INIT <uuid>                  — mkdir -p session dir
+
+set -euo pipefail
+
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+source "$(dirname "$SCRIPT_DIR")/lib/config.sh"
+
+STATE_DIR="${STATE_DIR:-${XDG_RUNTIME_DIR:-/tmp}/agent-session-switcher}"
+SESSIONS_DIR="${SESSIONS_DIR:-$STATE_DIR/sessions}"
+FIFO="$STATE_DIR/state.fifo"
+PIDFILE="$STATE_DIR/state-daemon.pid"
+
+daemon_run() {
+    mkdir -p "$STATE_DIR" "$SESSIONS_DIR"
+    [[ -p "$FIFO" ]] || mkfifo "$FIFO"
+
+    # Hold FIFO open for r/w to prevent EOF when last writer disconnects
+    exec 3<>"$FIFO"
+
+    while IFS= read -r line <&3; do
+        [[ -n "$line" ]] || continue
+
+        # Parse: CMD UUID [FIELD [VALUE...]]
+        local cmd uuid field value
+        read -r cmd uuid field value <<< "$line"
+
+        case "${cmd:-}" in
+            SET)
+                [[ -n "${uuid:-}" && -n "${field:-}" ]] || continue
+                local dir="$SESSIONS_DIR/$uuid"
+                local file="$dir/meta"
+                mkdir -p "$dir"
+
+                local tmp="$file.tmp.$$"
+                if [[ -f "$file" ]]; then
+                    grep -v "^${field}=" "$file" > "$tmp" 2>/dev/null || : > "$tmp"
+                else
+                    : > "$tmp"
+                fi
+                printf '%s=%s\n' "$field" "${value:-}" >> "$tmp"
+                mv -f "$tmp" "$file"
+                ;;
+            REMOVE)
+                [[ -n "${uuid:-}" ]] || continue
+                rm -rf "${SESSIONS_DIR:?}/$uuid"
+                ;;
+            INIT)
+                [[ -n "${uuid:-}" ]] || continue
+                mkdir -p "$SESSIONS_DIR/$uuid"
+                ;;
+            *)
+                # Unknown command, skip
+                ;;
+        esac
+    done
+}
+
+daemon_start() {
+    # Already running?
+    if daemon_alive; then
+        return 0
+    fi
+
+    mkdir -p "$STATE_DIR"
+    [[ -p "$FIFO" ]] || mkfifo "$FIFO"
+
+    # Fork daemon into background
+    "$0" run </dev/null &>/dev/null &
+    local pid=$!
+    disown "$pid"
+    echo "$pid" > "$PIDFILE"
+}
+
+daemon_stop() {
+    if [[ -f "$PIDFILE" ]]; then
+        local pid
+        pid="$(cat "$PIDFILE")"
+        if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" 2>/dev/null || true
+        fi
+        rm -f "$PIDFILE"
+    fi
+}
+
+daemon_alive() {
+    [[ -p "$FIFO" && -f "$PIDFILE" ]] || return 1
+    local pid
+    pid="$(cat "$PIDFILE" 2>/dev/null)" || return 1
+    [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
+}
+
+daemon_ensure() {
+    daemon_alive || daemon_start
+}
+
+case "${1:-}" in
+    run)     daemon_run ;;
+    start)   daemon_start ;;
+    stop)    daemon_stop ;;
+    ensure)  daemon_ensure ;;
+    alive)   daemon_alive ;;
+    *)
+        echo "Usage: agent-state-daemon {run|start|stop|ensure|alive}" >&2
+        exit 1
+        ;;
+esac

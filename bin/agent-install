@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# agent-install — install state library and daemon for global hook access
+# Creates symlinks in ~/.local/lib/agent-session-switcher/ and ~/.local/bin/
+
+set -euo pipefail
+
+PROJECT_ROOT="$(dirname "$(dirname "$(readlink -f "$0")")")"
+LIB_DEST="$HOME/.local/lib/agent-session-switcher"
+BIN_DEST="$HOME/.local/bin"
+
+mkdir -p "$LIB_DEST" "$BIN_DEST"
+
+# Symlink all library files
+for f in "$PROJECT_ROOT"/lib/*.sh; do
+    [[ -f "$f" ]] || continue
+    ln -sf "$f" "$LIB_DEST/$(basename "$f")"
+done
+
+# Symlink daemon binary
+ln -sf "$PROJECT_ROOT/bin/agent-state-daemon" "$BIN_DEST/agent-state-daemon"
+
+echo "Installed:"
+echo "  Libraries -> $LIB_DEST"
+echo "  Daemon    -> $BIN_DEST/agent-state-daemon"

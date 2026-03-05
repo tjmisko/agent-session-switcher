@@ -11,9 +11,9 @@
     "modules-right": [],
 
     "custom/ai-sessions": {
-        "exec": "agent-waybar-module",
+        "exec": "/home/tjmisko/Projects/agent-session-switcher/bin/agent-waybar-module",
         "return-type": "json",
-        "interval": 30,
+        "interval": 1,
         "signal": 10,
         "format": "{}",
         "tooltip": false

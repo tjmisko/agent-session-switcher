@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# agent-session-cycle-client — Switch tmux client to next/prev agent session
+#
+# Used inside the floating picker window (after attaching to a session)
+# to cycle through sessions with Alt+Up/Down without leaving the terminal.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
+
+source "$LIB_DIR/state.sh"
+
+state_init
+
+direction="${1:-next}"
+
+# Get sorted session UUIDs
+mapfile -t uuids < <(state_list_sessions | sort)
+
+if [[ ${#uuids[@]} -le 1 ]]; then
+    exit 0
+fi
+
+# Current session is whatever the client is attached to
+current_session="$(tmux display-message -p '#{session_name}')"
+current_uuid="$(state_find_uuid "$current_session")"
+
+# Find current index
+current_idx=-1
+for i in "${!uuids[@]}"; do
+    if [[ "${uuids[$i]}" == "$current_uuid" ]]; then
+        current_idx=$i
+        break
+    fi
+done
+
+if [[ "$current_idx" -eq -1 ]]; then
+    exit 0
+fi
+
+# Calculate next index
+count=${#uuids[@]}
+if [[ "$direction" == "next" ]]; then
+    next_idx=$(( (current_idx + 1) % count ))
+else
+    next_idx=$(( (current_idx - 1 + count) % count ))
+fi
+
+next_uuid="${uuids[$next_idx]}"
+next_name="$(state_get_name "$next_uuid")"
+
+if [[ -z "$next_name" ]]; then
+    exit 0
+fi
+
+# Switch the tmux client and update active state
+tmux switch-client -t "$next_name"
+state_set_active "$next_uuid"
+
+# Refresh waybar
+"$SCRIPT_DIR/agent-mode-toggle" refresh

@@ -33,10 +33,5 @@ state_write_session "$uuid" "idle_since" ""
 # Export state dir for summary writing
 export AGENT_STATE_DIR="$SESSIONS_DIR/$uuid"
 
-# Refresh waybar
-"$PROJECT_ROOT/bin/agent-mode-toggle" refresh
-
-# Regenerate workspace colors
-if [[ -x "$PROJECT_ROOT/integration/waybar-workspace-colors.sh" ]]; then
-    "$PROJECT_ROOT/integration/waybar-workspace-colors.sh" 2>/dev/null || true
-fi
+# Ensure waybar state
+"$PROJECT_ROOT/bin/agent-mode-toggle" ensure

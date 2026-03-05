@@ -18,11 +18,13 @@ _start_waybar() {
     pid="$(state_get_waybar_pid)"
 
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        _refresh_waybar
         return 0
     fi
 
-    waybar -c "$WAYBAR_DIR/config.jsonc" -s "$WAYBAR_DIR/style.css" &
+    setsid waybar -c "$WAYBAR_DIR/config.jsonc" -s "$WAYBAR_DIR/style.css" &>/dev/null &
     local new_pid=$!
+    disown "$new_pid"
     state_set_waybar_pid "$new_pid"
     state_set_mode "ai"
 }
@@ -62,11 +64,19 @@ case "$action" in
             _start_waybar
         fi
         ;;
+    ensure)
+        remaining="$(state_list_sessions | wc -l)"
+        if [[ "$remaining" -gt 0 ]]; then
+            _start_waybar
+        else
+            _stop_waybar
+        fi
+        ;;
     refresh)
         _refresh_waybar
         ;;
     *)
-        echo "Usage: agent-mode-toggle {enter|exit|toggle|refresh}" >&2
+        echo "Usage: agent-mode-toggle {enter|exit|toggle|ensure|refresh}" >&2
         exit 1
         ;;
 esac

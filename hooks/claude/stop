@@ -40,13 +40,8 @@ if [[ -n "$payload" ]]; then
     fi
 fi
 
-# Refresh waybar
-"$PROJECT_ROOT/bin/agent-mode-toggle" refresh
-
-# Regenerate workspace colors
-if [[ -x "$PROJECT_ROOT/integration/waybar-workspace-colors.sh" ]]; then
-    "$PROJECT_ROOT/integration/waybar-workspace-colors.sh" 2>/dev/null || true
-fi
+# Ensure waybar state
+"$PROJECT_ROOT/bin/agent-mode-toggle" ensure
 
 # Desktop notification (optional)
 if command -v notify-send &>/dev/null; then
