@@ -15,8 +15,26 @@ if ! declare -f config_get >/dev/null 2>&1; then
     source "$_STATE_LIB_DIR/config.sh"
 fi
 
+STATE_FIFO="$STATE_DIR/state.fifo"
+_STATE_DAEMON_BIN="${_STATE_LIB_DIR}/../bin/agent-state-daemon"
+# Resolve installed daemon path as fallback (for global hooks)
+if [[ ! -x "$_STATE_DAEMON_BIN" ]]; then
+    _STATE_DAEMON_BIN="$(command -v agent-state-daemon 2>/dev/null || echo "")"
+fi
+
+state_ensure_daemon() {
+    local pidfile="$STATE_DIR/state-daemon.pid"
+    if [[ -p "$STATE_FIFO" && -f "$pidfile" ]] && kill -0 "$(cat "$pidfile" 2>/dev/null)" 2>/dev/null; then
+        return 0
+    fi
+    if [[ -n "$_STATE_DAEMON_BIN" && -x "$_STATE_DAEMON_BIN" ]]; then
+        "$_STATE_DAEMON_BIN" ensure
+    fi
+}
+
 state_init() {
     mkdir -p "$STATE_DIR" "$SESSIONS_DIR"
+    state_ensure_daemon
 }
 
 # --- Active session (stores UUID) ---
@@ -100,22 +118,36 @@ state_write_session() {
     local uuid="$1"
     local field="$2"
     local value="$3"
-    local dir="$SESSIONS_DIR/$uuid"
-    local file="$dir/meta"
 
-    state_init
-    mkdir -p "$dir"
+    state_ensure_daemon
 
-    if [[ -f "$file" ]] && grep -q "^${field}=" "$file" 2>/dev/null; then
-        sed -i "s|^${field}=.*|${field}=${value}|" "$file"
+    if [[ -p "$STATE_FIFO" ]]; then
+        echo "SET $uuid $field $value" > "$STATE_FIFO"
     else
-        echo "${field}=${value}" >> "$file"
+        # Fallback: direct write if daemon unavailable
+        local dir="$SESSIONS_DIR/$uuid"
+        local file="$dir/meta"
+        mkdir -p "$dir"
+        local tmp="$file.tmp.$$"
+        if [[ -f "$file" ]]; then
+            grep -v "^${field}=" "$file" > "$tmp" 2>/dev/null || : > "$tmp"
+        else
+            : > "$tmp"
+        fi
+        printf '%s=%s\n' "$field" "$value" >> "$tmp"
+        mv -f "$tmp" "$file"
     fi
 }
 
 state_remove_session() {
     local uuid="$1"
-    rm -rf "${SESSIONS_DIR:?}/$uuid"
+    state_ensure_daemon
+
+    if [[ -p "$STATE_FIFO" ]]; then
+        echo "REMOVE $uuid" > "$STATE_FIFO"
+    else
+        rm -rf "${SESSIONS_DIR:?}/$uuid"
+    fi
 }
 
 state_session_exists() {
